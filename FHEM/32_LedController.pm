@@ -50,7 +50,7 @@ LedController_Initialize(@) {
   $hash->{AttrFn}               = 'LedController_Attr';
   $hash->{NotifyFn}             = 'LedController_Notify';
   $hash->{ReadFn}               = 'LedController_Read';
-  $hash->{AttrList}     = "defaultRamp defaultColor defaultHue defaultSat defaultVal colorTemp"
+  $hash->{AttrList}     = "defaultRamp defaultColor defaultHue defaultSat defaultVal colorTemp slaves"
                           ." $readingFnAttributes";
   require "HttpUtils.pm";
   
@@ -371,8 +371,24 @@ LedController_Attr(@) {
   my ($cmd, $device, $attribName, $attribVal) = @_;
   my $hash = $defs{$device};
 
-  if ($cmd eq 'set' && $attribName eq 'colorTemp'){
-  return "colorTemp must be between 2000 and 10000" if ! LedController_rangeCheck($attribVal, 2000, 10000);
+  if ($cmd eq 'set') {
+    if ($attribName eq 'colorTemp'){
+      return "colorTemp must be between 2000 and 10000" if ! LedController_rangeCheck($attribVal, 2000, 10000);
+    }
+    elsif ($attribName eq 'slaves') {
+      my @slaves = split / /, $attribVal;
+      for my $slaveDev (@slaves) {
+        my ($slaveName, $offsets) = split /:/, $slaveDev;
+        if ($slaveName eq $hash->{NAME}) {
+          return "You cannot set the current devices as a slave (infinite loop)!";
+        }
+        next if not defined $offsets;
+        my @offSplit = split /,/, $offsets;
+        if (scalar(@offSplit) != 3) {
+            return 'Invalid Syntax for attribute slaves. Use: slave:off_h,off_s,off_v';
+        }
+      }
+    }
   }
   # TODO: Add checks for defaultColor, defaultHue/Sat/Val here!
   Log3 ($hash, 4, "$hash->{NAME} attrib $attribName $cmd $attribVal") if $attribVal && ($hash->{helper}->{logLevel} >= 4); 
@@ -532,6 +548,56 @@ if ($err) {
 }
 
 sub
+LedController_SetHSVColor_Slaves(@) {
+  my ($hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction) = @_;  
+
+  my $slaveAttr = AttrVal($hash->{NAME}, "slaves", "");
+  return if ($slaveAttr eq "");
+  
+  my $flags = '';
+  $flags .= 'q' if $doQueue eq 'true';
+  $flags .= 'l' if not $direction;
+  
+  my @slaves = split / /, $slaveAttr;
+  for my $slaveDev (@slaves) {
+    Log3 ($hash, 3, "$hash->{NAME}: Processing slave: $slaveDev") if ($hash->{helper}->{logLevel} >= 3);
+    my ($slaveName, $offsets) = split /:/, $slaveDev;
+    
+    if (defined $offsets) {
+        my @offSplit = split /,/, $offsets;
+        $hue += $offSplit[0];
+        $sat += $offSplit[1];
+        $val += $offSplit[2];
+        
+        $val = 0 if $val < 0;
+        $val = 100 if $val > 100;
+        $sat = 0 if $sat < 0;
+        $sat = 100 if $sat > 100;
+        $hue = 0 if $hue < 0;
+        $hue = 360 if $hue > 360;
+    }
+    
+    my $prop = "hsv";
+    
+    # compatibility with WifiLight
+    if (InternalVal($slaveName, "TYPE", "") eq "WifiLight") {
+        $prop = "HSV";
+        $hue = int($hue + 0.5);
+        $sat = int($sat + 0.5);
+        $val = int($val + 0.5);
+    }
+    
+    $fadeTime /= 1000.0;
+    
+    my $slaveCmd = "set $slaveName $prop $hue,$sat,$val $fadeTime $flags";
+    Log3 ($hash, 3, "$hash->{NAME}: Issueing slave command: $slaveCmd") if ($hash->{helper}->{logLevel} >= 3);
+    fhem($slaveCmd);
+  }
+  
+  return undef;
+}
+
+sub
 LedController_SetHSVColor(@) {
 
 
@@ -576,6 +642,9 @@ LedController_SetHSVColor(@) {
 
     LedController_UpdateReadings($hash, $hue, $sat, $val, $colorTemp);
   }
+  
+  LedController_SetHSVColor_Slaves(@_);
+  
   return undef;
 }
 
@@ -1189,6 +1258,11 @@ sub LedController_rangeCheck(@){
     Time in milliseconds. If this attribute is set, a smooth transition is always implicitly generated if no ramp in the set is indicated.</li> 
  
     <li><a name="colorTemp">colorTemp</a><br> 
+    </li>
+
+    <li><a name="slaves">slaves</a><br> 
+    List of slave device names seperated by whitespacs. All set-commands will be forwarded to the slave devices. Example: "wz_lampe1 sz_lampe2"
+    An offset for the HSV values can be applied for each slave device. Syntax: &lt;slave&gt;:&lt;offset_h&gt;,&lt;offset_s&gt;,&lt;offset_v&gt;
     </li> 
   </ul> 
   <p><b>Colorpicker for FhemWeb</b> 
@@ -1423,8 +1497,13 @@ sub LedController_rangeCheck(@){
     Zeit in Millisekunden. Wenn dieses Attribut gesetzt ist wird implizit immer ein weicher Übergang erzeugt wenn keine ramp im set angegeben ist.</li> 
  
     <li><a name="colorTemp">colorTemp</a><br> 
+    </li>
+
+    <li><a name="slaves">slaves</a><br> 
+    Durch Leerzeichen getrennte Liste von Slave-Geräten. Alle set-Befehle werden an alle Slaves weitergereicht. Beispiel: "wz_lampe1 sz_lampe2"
+    Für jeden Slave können Offsets für die HSV-Werte konfiguriert werden, so daß sie eine andere Farbe als der Master wiedergeben. Syntax: &lt;slave&gt;:&lt;offset_h&gt;,&lt;offset_s&gt;,&lt;offset_v&gt;
     </li> 
-  </ul> 
+    </ul> 
   <p><b>Colorpicker für FhemWeb</b> 
     <ul> 
       <p> 

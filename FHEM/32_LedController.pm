@@ -557,6 +557,8 @@ LedController_SetHSVColor_Slaves(@) {
   my $flags = '';
   $flags .= 'q' if $doQueue eq 'true';
   $flags .= 'l' if not $direction;
+
+  $fadeTime /= 1000.0;
   
   my @slaves = split / /, $slaveAttr;
   for my $slaveDev (@slaves) {
@@ -585,9 +587,14 @@ LedController_SetHSVColor_Slaves(@) {
         $hue = int($hue + 0.5);
         $sat = int($sat + 0.5);
         $val = int($val + 0.5);
+        
+        if ($fadeTime < 10.0) {
+            $fadeTime = sprintf("%.1f", $fadeTime + 0.05);
+        }
+        else {
+            $fadeTime = int($fadeTime + 0.5);
+        }
     }
-    
-    $fadeTime /= 1000.0;
     
     my $slaveCmd = "set $slaveName $prop $hue,$sat,$val $fadeTime $flags";
     Log3 ($hash, 3, "$hash->{NAME}: Issueing slave command: $slaveCmd") if ($hash->{helper}->{logLevel} >= 3);

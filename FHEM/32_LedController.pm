@@ -744,6 +744,16 @@ sub LedController_ParseHSVColor(@) {
 	return undef;
 }
 
+sub LedController_fixHueCircular(@) {
+	my ($hue) = @_;
+
+	$hue = $hue % 360 if ($hue > 360);
+	while($hue < 0) {
+		$hue = 360 + $hue;
+	}
+	return $hue;
+}
+
 sub LedController_SetHSVColor_Slaves(@) {
 	my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction ) = @_;
 
@@ -771,8 +781,7 @@ sub LedController_SetHSVColor_Slaves(@) {
 			$val = 100 if $val > 100;
 			$sat = 0   if $sat < 0;
 			$sat = 100 if $sat > 100;
-			$hue = 0   if $hue < 0;
-			$hue = 360 if $hue > 360;
+			$hue = LedController_fixHueCircular($hue);
 		}
 
 		my $prop = "hsv";
@@ -802,22 +811,26 @@ sub LedController_SetHSVColor_Slaves(@) {
 
 sub LedController_SetHSVColor(@) {
 	my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name ) = @_;
-	Log3( $hash, 3, "$hash->{NAME}: called SetHSVColor $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name)" )
-	  if ( $hash->{helper}->{logLevel} >= 3 );
+	Log3( $hash, 3, "$hash->{NAME}: called SetHSVColor $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name)" );
 	my $ip = $hash->{IP};
 	my $data;
 	my $cmd;
 
-	$cmd->{hsv}->{h}  = $hue;
-	$cmd->{hsv}->{s}  = $sat;
-	$cmd->{hsv}->{v}  = $val;
-	$cmd->{hsv}->{ct} = $colorTemp;
-	$cmd->{cmd}       = $transitionType;
-	$cmd->{t}         = $fadeTime;
-	$cmd->{q}         = $doQueue;
-	$cmd->{d}         = $direction;
-	$cmd->{r}         = $doReQueue;
-	$cmd->{name}      = $name;
+	if (!defined($hue) && !defined($sat) && !defined($val) && !defined($colorTemp)) {
+		Log3( $hash, 3, "$hash->{NAME}: error: All HSVCT components undefined!" );
+		return undef;
+	}
+
+	$cmd->{hsv}->{h} = $hue if defined($hue);
+	$cmd->{hsv}->{s} = $sat if defined($sat);
+	$cmd->{hsv}->{v} = $val if defined($val);
+	$cmd->{hsv}->{ct} = $colorTemp if defined($colorTemp);
+	$cmd->{cmd}       = $transitionType if defined($transitionType);
+	$cmd->{t}         = $fadeTime if defined($fadeTime);
+	$cmd->{q}         = $doQueue if defined($doQueue);
+	$cmd->{d}         = $direction if defined($direction);
+	$cmd->{r}         = $doReQueue if defined($doReQueue);
+	$cmd->{name}      = $name if defined($name);
 
 	eval { $data = JSON->new->utf8(1)->encode($cmd); };
 	if ($@) {

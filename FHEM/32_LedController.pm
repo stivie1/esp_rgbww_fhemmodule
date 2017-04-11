@@ -302,8 +302,8 @@ sub LedController_Set(@) {
 		my ( $hue, $sat, $val ) = split ',', $args[0];
 
 		if ( !LedController_rangeCheck( $hue, 0, 360 ) ) {
-			Log3( $hash, 3, "$hash->{NAME} HUE must be a number from 0-359" );
-			return "$hash->{NAME} HUE must be a number from 0-359";
+			Log3( $hash, 3, "$hash->{NAME} HUE must be a number from 0-360" );
+			return "$hash->{NAME} HUE must be a number from 0-360";
 		}
 		if ( !LedController_rangeCheck( $sat, 0, 100 ) ) {
 			Log3( $hash, 3, "$hash->{NAME} SAT must be a number from 0-100" );
@@ -354,7 +354,7 @@ sub LedController_Set(@) {
 		my $val = InternalVal( $hash->{NAME}, "valValue", 0 );
 		my $sat = InternalVal( $hash->{NAME}, "satValue", 0 );
 
-		# add rotation to hue and normalize to 0-359
+		# add rotation to hue and normalize to 0-360
 		$hue = ( $hue + $rotation ) % 360;
 
 		Log3( $hash, 5, "$hash->{NAME} setting HUE to $hue, keeping VAL $val and SAT $sat" ) if ( $hash->{helper}->{logLevel} >= 5 );
@@ -384,7 +384,7 @@ sub LedController_Set(@) {
 
 			# Split defaultColor and if all three components pass rangeCheck set them.
 			my ( $dcHue, $dcSat, $dcVal ) = split( ',', $defaultColor );
-			if ( LedController_rangeCheck( $dcHue, 0, 359 ) && LedController_rangeCheck( $dcSat, 0, 100 ) && LedController_rangeCheck( $dcVal, 0, 100 ) ) {
+			if ( LedController_rangeCheck( $dcHue, 0, 360 ) && LedController_rangeCheck( $dcSat, 0, 100 ) && LedController_rangeCheck( $dcVal, 0, 100 ) ) {
 
 				# defaultColor values are valid. Overwrite current hue/sat/val.
 				$hue = $dcHue;
@@ -399,7 +399,7 @@ sub LedController_Set(@) {
 		my $dVal = AttrVal( $hash->{NAME}, "defaultVal", $val );
 
 		# range/sanity check
-		$hue = LedController_rangeCheck( $dHue, 0, 359 ) ? $dHue : $hue;
+		$hue = LedController_rangeCheck( $dHue, 0, 360 ) ? $dHue : $hue;
 		$sat = LedController_rangeCheck( $dSat, 0, 100 ) ? $dSat : $sat;
 		$val = LedController_rangeCheck( $dVal, 0, 100 ) ? $dVal : $val;
 
@@ -492,9 +492,9 @@ sub LedController_Set(@) {
 		my $hue = $args[0];
 
 		# input validation
-		if ( !LedController_rangeCheck( $hue, 0, 359 ) ) {
-			Log3( $hash, 3, "$hash->{NAME} hue value must be a number from 0-359" );
-			return "$hash->{NAME} hue value must be a number from 0-359";
+		if ( !LedController_rangeCheck( $hue, 0, 360 ) ) {
+			Log3( $hash, 3, "$hash->{NAME} hue value must be a number from 0-360" );
+			return "$hash->{NAME} hue value must be a number from 0-360";
 		}
 
 		my $val = InternalVal( $hash->{NAME}, "valValue", 0 );

@@ -307,13 +307,13 @@ sub LedController_Set(@) {
 
         if ( !defined($hue) && !defined($sat) && !defined($val) ) {
             my $msg = "$hash->{NAME} at least one of HUE, SAT or VAL must be set";
-            Log3( $hash, 3, msg );
-            return msg;
+            Log3( $hash, 3, $msg );
+            return $msg;
         }
         if ( defined($hue) && !LedController_rangeCheck( $hue, 0, 360 ) ) {
             my $msg = "$hash->{NAME} HUE must be a number from 0-360";
-            Log3( $hash, 3, msg );
-            return msg;
+            Log3( $hash, 3, $msg );
+            return $msg;
         }
         if ( ( length($sat) > 0 ) && !LedController_rangeCheck( $sat, 0, 100 ) ) {
             my $msg = "$hash->{NAME} SAT must be a number from 0-100";
@@ -1205,6 +1205,7 @@ sub LedController_ArgsHelper(@) {
     }
     Log3( $hash, 3, "$hash->{NAME} flags=$flags" );
 
+    ($flags, $name) = split /:/, $flags;
     my $queueBack       = ( $flags =~ m/q/i );
     my $queueFront      = ( $flags =~ m/f/i );
     my $queueFrontReset = ( $flags =~ m/e/i );

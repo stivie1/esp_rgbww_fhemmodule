@@ -285,12 +285,12 @@ sub LedController_Set(@) {
     # $doQueue (true|false): Should this operation be queued or executed directly on the controller?
     # $direction: Take the short route on HSV for the transition (0) or the long one (1)
     # SHUZZ: These arguments may be added to any set command here, therefore we can decode them now.
-    my ( $fadeTime, $doQueue, $doReQueue, $name, $direction, $argsError );
+    my ( $fadeTime, $doQueue, $doReQueue, $name, $direction, $argsError, $transitionType );
     if ( $cmd eq 'on' || $cmd eq 'off' ) {
-        ( $argsError, $fadeTime, $doQueue, $direction, $doReQueue, $name ) = LedController_ArgsHelper( $hash, $args[0], $args[1], $args[2] );
+        ( $argsError, $fadeTime, $doQueue, $direction, $doReQueue, $name, $transitionType ) = LedController_ArgsHelper( $hash, $args[0], $args[1], $args[2] );
     }
     else {
-        ( $argsError, $fadeTime, $doQueue, $direction, $doReQueue, $name ) = LedController_ArgsHelper( $hash, $args[1], $args[2], $args[3] );
+        ( $argsError, $fadeTime, $doQueue, $direction, $doReQueue, $name, $transitionType ) = LedController_ArgsHelper( $hash, $args[1], $args[2], $args[3] );
     }
 
     return $argsError if defined($argsError);
@@ -317,7 +317,7 @@ sub LedController_Set(@) {
             return "$hash->{NAME} VAL must be a number from 0-100";
         }
 
-        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ),
+        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType,
             $doQueue, $direction, $doReQueue, $name );
     }
     elsif ( $cmd eq 'rgb' ) {
@@ -337,7 +337,7 @@ sub LedController_Set(@) {
         my $blue  = hex( substr( $args[0], 4, 2 ) );
         Log3( $hash, 5, "$hash->{NAME} raw: $args[0], r: $red, g: $green, b: $blue" ) if ( $hash->{helper}->{logLevel} >= 5 );
         my ( $hue, $sat, $val ) = LedController_RGB2HSV( $hash, $red, $green, $blue );
-        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ), $doQueue, $direction );
+        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction );
     }
     elsif ( $cmd eq 'on' ) {
         # Add check to only do something if the controller is REALLY turned off, i.e. val eq 0
@@ -383,7 +383,7 @@ sub LedController_Set(@) {
         Log3( $hash, 5, "$hash->{NAME} setting VAL to $val, SAT to $sat and HUE $hue" ) if ( $hash->{helper}->{logLevel} >= 5 );
         Log3( $hash, 5, "$hash->{NAME} args[0] = $args[0], args[1] = $args[1]" )        if ( $hash->{helper}->{logLevel} >= 5 );
 
-        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ), $doQueue, $direction );
+        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction );
     }
     elsif ( $cmd eq 'off' ) {
         # Store old val in internal for use by on command.
@@ -394,17 +394,17 @@ sub LedController_Set(@) {
         my $hue = InternalVal( $hash->{NAME}, "hueValue", 0 );
         my $sat = InternalVal( $hash->{NAME}, "satValue", 0 );
         Log3( $hash, 5, "$hash->{NAME} setting VAL to $val, keeping HUE $hue and SAT $sat" ) if ( $hash->{helper}->{logLevel} >= 5 );
-        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ), $doQueue, $direction );
+        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction );
     }
     elsif ( $cmd eq "dimup" ) {
         # dimming value is first parameter, add to $val and keep hue and sat the way they were.
         my $dim = $args[0];
-        LedController_SetHSVColor( $hash, undef, undef, "+" . $dim, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ), $doQueue, $direction );
+        LedController_SetHSVColor( $hash, undef, undef, "+" . $dim, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction );
     }
     elsif ( $cmd eq "dimdown" ) {
         # dimming value is first parameter, add to $val and keep hue and sat the way they were.
         my $dim = $args[0];
-        LedController_SetHSVColor( $hash, undef, undef, "-" . $dim, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ), $doQueue, $direction );
+        LedController_SetHSVColor( $hash, undef, undef, "-" . $dim, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction );
     }
     elsif ( $cmd eq 'val' || $cmd eq 'dim' ) {
 
@@ -418,7 +418,7 @@ sub LedController_Set(@) {
         }
 
         Log3( $hash, 5, "$hash->{NAME} setting VAL to $val" );
-        LedController_SetHSVColor( $hash, undef, undef, $val, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ), $doQueue, $direction );
+        LedController_SetHSVColor( $hash, undef, undef, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction );
     }
     elsif ( $cmd eq 'sat' ) {
 
@@ -432,7 +432,7 @@ sub LedController_Set(@) {
         }
 
         Log3( $hash, 5, "$hash->{NAME} setting SAT to $sat" );
-        LedController_SetHSVColor( $hash, undef, $sat, undef, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ), $doQueue, $direction );
+        LedController_SetHSVColor( $hash, undef, $sat, undef, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction );
     }
     elsif ( $cmd eq 'hue' ) {
 
@@ -448,7 +448,7 @@ sub LedController_Set(@) {
         Log3( $hash, 5, "$hash->{NAME} setting HUE to $hue" );
         Log3( $hash, 5, "$hash->{NAME} got extended args: t = $fadeTime, q = $doQueue, d=$direction" );
 
-        LedController_SetHSVColor( $hash, $hue, undef, undef, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ), $doQueue, $direction );
+        LedController_SetHSVColor( $hash, $hue, undef, undef, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction );
     }
     elsif ( $cmd eq 'raw' ) {
         my ( $red, $green, $blue, $ww, $cw ) = split ',', $args[0];
@@ -459,7 +459,7 @@ sub LedController_Set(@) {
         $ww    = undef if ( length($ww) == 0 );
         $cw    = undef if ( length($cw) == 0 );
 
-        LedController_SetRAWColor( $hash, $red, $green, $blue, $ww, $cw, $colorTemp, $fadeTime, ( ( $fadeTime == 0 ) ? 'solid' : 'fade' ),
+        LedController_SetRAWColor( $hash, $red, $green, $blue, $ww, $cw, $colorTemp, $fadeTime, $transitionType,
             $doQueue, $direction );
     }
     elsif ( $cmd eq 'update' ) {
@@ -1208,6 +1208,7 @@ sub LedController_ArgsHelper(@) {
     my $doQueue   = 'single';
     my $doReQueue = 'false';
     my $d         = '1';
+    my $transitionType = 'fade';
 
     my $flags = $a;
     my $name  = $b;
@@ -1235,8 +1236,10 @@ sub LedController_ArgsHelper(@) {
     $doReQueue = ( $flags =~ m/r/i ) ? 'true' : 'false';
     $d         = ( $flags =~ m/l/ )  ? 0      : 1;
 
+    $transitionType = 'solid' if ( $flags =~ m/s/i );
+    
     Log3( $hash, 3, "$hash->{NAME} extended args: t = $fadeTime, q = $doQueue, d = $d, r = $doReQueue, name = $name" ) if ( $hash->{helper}->{logLevel} >= 3 );
-    return ( undef, $fadeTime, $doQueue, $d, $doReQueue, $name );
+    return ( undef, $fadeTime, $doQueue, $d, $doReQueue, $name, $transitionType );
 }
 
 sub LedController_isNumeric {

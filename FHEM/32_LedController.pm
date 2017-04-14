@@ -263,10 +263,7 @@ sub LedController_UpdateLogLevel(@) {
 
 sub LedController_Set(@) {
     my ( $hash, $name, $cmd, @args ) = @_;
-
-    return "Unknown argument $cmd, choose one of hsv rgb state update hue sat stop val dim dimup dimdown on off raw pause continue blink skip"
-      if ( $cmd eq '?' );
-
+    my $forwardToSlaves = 0;
     LedController_UpdateLogLevel($hash);
     Log3( $hash, 4,
             "\nglobal LogLevel: $attr{global}{verbose}\nmodule LogLevel: "
@@ -277,9 +274,9 @@ sub LedController_Set(@) {
     # Note: rangeCheck is performed in attr method, so a simple AttrVal with 2700 as default value is enough here.
     my $colorTemp = AttrVal( $hash->{NAME}, 'colorTemp', 2700 );
 
-    Log3( $hash, 3, "$hash->{NAME} (Set) called with $cmd, busy flag is $hash->{helper}->{isBusy}\n name is $name, args " . Dumper(@args) )
-      if ( $hash->{helper}->{logLevel} >= 3 );
-    Log3( $hash, 3, "$hash->{NAME} (Set) called with $cmd, busy flag is $hash->{helper}->{isBusy}" );
+    Log3( $hash, 5, "$hash->{NAME} (Set) called with $cmd, busy flag is $hash->{helper}->{isBusy}\n name is $name, args " . Dumper(@args) )
+      if ( $hash->{helper}->{logLevel} >= 5 );
+    Log3( $hash, 5, "$hash->{NAME} (Set) called with $cmd, busy flag is $hash->{helper}->{isBusy}" );
 
     # $fadeTime: Duration of the color change in ms
     # $doQueue (true|false): Should this operation be queued or executed directly on the controller?
@@ -475,6 +472,7 @@ sub LedController_Set(@) {
     }
     elsif ( $cmd eq 'continue' || $cmd eq 'pause' || $cmd eq 'skip' || $cmd eq 'stop' ) {
         LedController_SetChannelCommand( $hash, $cmd, \@args );
+        $forwardToSlaves = 1;
     }
     elsif ( $cmd eq 'blink' ) {
         my $param = LedController_GetHttpParams( $hash, "POST", "blink", "" );
@@ -495,8 +493,33 @@ sub LedController_Set(@) {
 
         $param->{data} = LedController_EncodeJson( $hash, $cmd );
         LedController_addCall( $hash, $param );
+        $forwardToSlaves = 1;
     }
+    else {
+        return "Unknown argument $cmd, choose one of hsv rgb state update hue sat stop val dim dimup dimdown on off raw pause continue blink skip"
+    }
+
+    if ($forwardToSlaves) {
+        LedController_ForwardToSlaves($hash, $cmd, \@args);
+    }
+    
     return undef;
+}
+
+sub LedController_ForwardToSlaves(@) {
+	my ($hash, $cmd, $args) = @_;
+
+    my $slaveAttr = AttrVal( $hash->{NAME}, "slaves", "" );
+    return if ( $slaveAttr eq "" );
+
+    my @slaves = split / /, $slaveAttr;
+    for my $slaveDev (@slaves) {
+        my ( $slaveName, $offsets ) = split /:/, $slaveDev;
+
+        my $slaveCmd = "set $slaveName $cmd " . join(",", @{ $args });
+        Log3( $hash, 3, "$hash->{NAME} LedController_ForwardToSlaves: $slaveCmd" );
+        fhem($slaveCmd);
+    }
 }
 
 sub LedController_SetChannelCommand(@) {
@@ -719,16 +742,25 @@ sub LedController_fixHueCircular(@) {
     return $hue;
 }
 
+sub LedController_GetQueuePolicyFlags($) {
+    my ($q) = @_;
+    return "q" if ($q eq "back");
+    return "f" if ($q eq "front");
+    return "e" if ($q eq "front_reset");
+    return undef;
+}
+
 sub LedController_SetHSVColor_Slaves(@) {
-    my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction ) = @_;
+    my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name ) = @_;
 
     my $slaveAttr = AttrVal( $hash->{NAME}, "slaves", "" );
     return if ( $slaveAttr eq "" );
 
     my $flags = '';
-    $flags .= 'q' if $doQueue eq 'true';
-    $flags .= 'l' if not $direction;
-
+    $flags .= LedController_GetQueuePolicyFlags($doQueue);
+    $flags .= "r" if $doRequeue;
+    $flags .= ":$name" if defined($name);
+    
     $fadeTime /= 1000.0;
 
     my @slaves = split / /, $slaveAttr;
@@ -749,24 +781,7 @@ sub LedController_SetHSVColor_Slaves(@) {
             $hue = LedController_fixHueCircular($hue);
         }
 
-        my $prop = "hsv";
-
-        # compatibility with WifiLight
-        if ( InternalVal( $slaveName, "TYPE", "" ) eq "WifiLight" ) {
-            $prop = "HSV";
-            $hue  = int( $hue + 0.5 );
-            $sat  = int( $sat + 0.5 );
-            $val  = int( $val + 0.5 );
-
-            if ( $fadeTime < 10.0 ) {
-                $fadeTime = sprintf( "%.1f", $fadeTime + 0.05 );
-            }
-            else {
-                $fadeTime = int( $fadeTime + 0.5 );
-            }
-        }
-
-        my $slaveCmd = "set $slaveName $prop $hue,$sat,$val $fadeTime $flags";
+        my $slaveCmd = "set $slaveName hsv $hue,$sat,$val $fadeTime $flags";
         Log3( $hash, 3, "$hash->{NAME}: Issueing slave command: $slaveCmd" ) if ( $hash->{helper}->{logLevel} >= 3 );
         fhem($slaveCmd);
     }
@@ -786,8 +801,8 @@ sub LedController_EncodeJson($$) {
 }
 
 sub LedController_SetHSVColor(@) {
-    my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name ) = @_;
-    Log3( $hash, 3, "$hash->{NAME}: called SetHSVColor $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name)" );
+    my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name ) = @_;
+    Log3( $hash, 3, "$hash->{NAME}: called SetHSVColor $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name)" );
 
     if ( !defined($hue) && !defined($sat) && !defined($val) && !defined($colorTemp) ) {
         Log3( $hash, 3, "$hash->{NAME}: error: All HSVCT components undefined!" );
@@ -805,7 +820,7 @@ sub LedController_SetHSVColor(@) {
     $cmd->{t}         = $fadeTime       if defined($fadeTime);
     $cmd->{q}         = $doQueue        if defined($doQueue);
     $cmd->{d}         = $direction      if defined($direction);
-    $cmd->{r}         = $doReQueue      if defined($doReQueue);
+    $cmd->{r}         = $doRequeue      if defined($doRequeue);
     $cmd->{name}      = $name           if defined($name);
 
     my $data;
@@ -1006,7 +1021,7 @@ sub LedController_ParseSetRAWColor(@) {
 sub LedController_addCall(@) {
     my ( $hash, $param ) = @_;
 
-    Log3( $hash, 3, "$hash->{NAME}: add to queue: \n\n" . Dumper $param);
+    Log3( $hash, 5, "$hash->{NAME}: add to queue: \n\n" . Dumper $param);
 
     # add to queue
     push @{ $hash->{helper}->{cmdQueue} }, $param;
@@ -1188,7 +1203,7 @@ sub LedController_HSV2RGB(@) {
 
 sub LedController_ArgsHelper(@) {
     my ( $hash, $a, $b, $c ) = @_;
-    Log3( $hash, 3, "$hash->{NAME} extended args raw: a=$a, b=$b, c=$c" );
+    Log3( $hash, 5, "$hash->{NAME} extended args raw: a=$a, b=$b, c=$c" );
     my $fadeTime = AttrVal( $hash->{NAME}, 'defaultRamp', 0 );
     Log3( $hash, 5, "$hash->{NAME} t= $fadeTime" );
     my $doQueue        = 'single';
@@ -1203,7 +1218,7 @@ sub LedController_ArgsHelper(@) {
         $flags    = $b;
         $name     = $c;
     }
-    Log3( $hash, 3, "$hash->{NAME} flags=$flags" );
+    Log3( $hash, 5, "$hash->{NAME} flags=$flags" );
 
     ($flags, $name) = split /:/, $flags;
     my $queueBack       = ( $flags =~ m/q/i );
@@ -1227,7 +1242,7 @@ sub LedController_ArgsHelper(@) {
 
     $transitionType = 'solid' if ( $flags =~ m/s/i );
 
-    Log3( $hash, 3, "$hash->{NAME} extended args: t = $fadeTime, q = $doQueue, d = $d, r = $doReQueue, name = $name" ) if ( $hash->{helper}->{logLevel} >= 3 );
+    Log3( $hash, 5, "$hash->{NAME} extended args: t = $fadeTime, q = $doQueue, d = $d, r = $doReQueue, name = $name" ) if ( $hash->{helper}->{logLevel} >= 3 );
     return ( undef, $fadeTime, $doQueue, $d, $doReQueue, $name, $transitionType );
 }
 

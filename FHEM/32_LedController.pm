@@ -546,8 +546,15 @@ sub LedController_Set(@) {
     LedController_SendSystemCommand( $hash, $cmd );
     $forwardToSlaves = 1;
   }
+  elsif ( $cmd eq 'fw_update' ) {
+    return "Invalid syntax: Use 'set <device> fw_update <URL to version.json> [<force>]'" if ( scalar @args != 1 && scalar @args != 2);
+
+    my $force = defined($args[1]) ? $args[1] : 0;
+    LedController_FwUpdate_GetVersion( $hash, $args[0], $force );
+  }
   else {
-    return "Unknown argument $cmd, choose one of hsv rgb state update hue sat stop val dim dimup dimdown on off raw pause continue blink skip config restart";
+    return
+"Unknown argument $cmd, choose one of hsv rgb state update hue sat stop val dim dimup dimdown on off raw pause continue blink skip config restart fw_update";
   }
 
   if ($forwardToSlaves) {
@@ -672,7 +679,8 @@ sub LedController_IterateConfigHash($$$) {
 }
 
 sub LedController_ParseConfig(@) {
-  my ( $hash, $err, $data ) = @_;
+  my ($hash, $err, $data) = @_;
+
   my $res;
 
   Log3( $hash, 3, "$hash->{NAME}: got config response" );
@@ -706,10 +714,8 @@ sub LedController_ParseConfig(@) {
 }
 
 sub LedController_ParseInfo(@) {
+  my ($hash, $err, $data) = @_;
 
-  #my ($param, $err, $data) = @_;
-  #my ($hash) = $param->{hash};
-  my ( $hash, $err, $data ) = @_;
   my $res;
 
   Log3( $hash, 3, "$hash->{NAME}: got info response" );
@@ -780,6 +786,126 @@ sub LedController_GetHSVColor_blocking(@) {
   return undef;
 }
 
+sub LedController_FwUpdate_GetVersion(@) {
+  my ( $hash, $url, $force ) = @_;
+
+  $hash->{helper}->{fwUpdateForce} = $force;
+  
+  my $params = {
+    url      => $url,
+    timeout  => 30,
+    hash     => $hash,
+    method   => "GET",
+    header   => "User-Agent: fhem\r\nAccept: application/json",
+    callback => \&LedController_ParseFwVersionResult,
+    forceFw  => $force
+  };
+
+  HttpUtils_NonblockingGet($params);
+}
+
+sub LedController_QueueFwUpdateProgressCheck(@) {
+  my ($hash) = @_;
+
+  InternalTimer( time() + 1, "LedController_FwUpdateProgressCheck", $hash, 0 );
+}
+
+sub LedController_FwUpdateProgressCheck(@) {
+  my ($hash) = @_;
+  my $param = LedController_GetHttpParams( $hash, "GET", "update", "" );
+  $param->{parser} = \&LedController_ParseFwUpdateProgress;
+
+  $param->{data} = LedController_EncodeJson( $hash, {} );
+  LedController_addCall( $hash, $param );
+}
+
+sub LedController_ParseFwVersionResult(@) {
+  my ($param, $err, $data) = @_;
+  my $hash = $param->{hash};
+  my $force = $param->{forceFw};
+
+  my $res;
+
+  Log3( $hash, 4, "$hash->{NAME}: LedController_FwVersionCallback" );
+  if ($err) {
+    Log3( $hash, 2, "$hash->{NAME}: LedController_FwVersionCallback error: $err" );
+  }
+  elsif ($data) {
+    eval { $res = JSON->new->utf8(1)->decode($data); };
+    if ($@) {
+      Log3( $hash, 2, "$hash->{NAME}: LedController_ParseFwVersionResult error decoding FW version: $@" );
+      return undef;
+    }
+
+    my $curFw = ReadingsVal($hash->{NAME}, "info-firmware", "");
+    my $newFw = $res->{rom}{fw_version};
+    if ( $newFw eq $curFw ) {
+      if ($force) {
+        Log3( $hash, 3, "$hash->{NAME}: Firmware already installed: $newFw. Still updating due to force flag!" );
+      }
+      else {
+        Log3( $hash, 3, "$hash->{NAME}: Update skipped. Firmware already installed: $newFw" );
+        return undef;
+      }
+    }
+    else {
+      Log3( $hash, 3, "$hash->{NAME}: Updating firmware now. Current firmware: " . $curFw . " New firmare: " . $newFw );
+    }
+    
+    my $param = LedController_GetHttpParams( $hash, "POST", "update", "" );
+    $param->{parser} = \&LedController_ParseBoolResult;
+
+    $param->{data} = $data;
+    LedController_addCall( $hash, $param );
+
+    LedController_QueueFwUpdateProgressCheck($hash);
+  }
+
+  return undef;
+}
+
+sub LedController_ParseFwUpdateProgress(@) {
+  my ($hash, $err, $data) = @_;
+
+  my $res;
+  Log3( $hash, 4, "$hash->{NAME}: LedController_ParseFwUpdateProgress222: " . Dumper($hash) );
+  if ($err) {
+    Log3( $hash, 2, "$hash->{NAME}: LedController_ParseFwUpdateProgress error: $err" );
+  }
+  elsif ($data) {
+    eval { $res = JSON->new->utf8(1)->decode($data); };
+    if ($@) {
+      Log3( $hash, 4, "$hash->{NAME}: error decoding FW update status $@" );
+      return undef;
+    }
+
+    my $status = $res->{status};
+    Log3( $hash, 3, "$hash->{NAME}: LedController_ParseFwUpdateProgress. status: $status" );
+
+    if ( $status == 2 ) {
+
+      # OTA_SUCCESS_REBOOT
+      Log3( $hash, 3, "$hash->{NAME}: LedController_ParseFwUpdateProgress - Update successful - Restarting device..." );
+      LedController_SendSystemCommand( $hash, "restart" );
+    }
+    elsif ( $status == 1 ) {
+
+      # OTA_PROCESSING
+      LedController_QueueFwUpdateProgressCheck($hash);
+    }
+    elsif ( $status == 4 ) {
+
+      # OTA_FAILED
+      Log3( $hash, 3, "$hash->{NAME}: LedController_ParseFwUpdateProgress - Update failed!" );
+    }
+    else {
+      Log3( $hash, 3, "$hash->{NAME}: LedController_ParseFwUpdateProgress - Unexpected update status: $status" );
+    }
+  }
+
+  return undef;
+}
+
 sub LedController_GetHttpParams(@) {
   my ( $hash, $method, $path, $query ) = @_;
   my $ip = $hash->{IP};
@@ -808,9 +934,6 @@ sub LedController_GetHSVColor(@) {
 }
 
 sub LedController_ParseHSVColor(@) {
-
-  #my ($param, $err, $data) = @_;
-  #my ($hash) = $param->{hash};
   my ( $hash, $err, $data ) = @_;
   my $res;
 

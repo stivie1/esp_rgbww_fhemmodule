@@ -81,6 +81,7 @@ sub LedController_Define($$) {
 
     # TODO remove, fixeg loglevel 5 only for debugging
     #$attr{$hash->{NAME}}{verbose} = 5;
+    LedController_GetInfo($hash);
     LedController_GetConfig($hash);
     $hash->{helper}->{oldVal} = 100;
     $hash->{DeviceName} = "$hash->{IP}:$hash->{PORT}";
@@ -97,6 +98,9 @@ sub LedController_Undef(@) {
 sub LedController_Init(@) {
     my ($hash) = @_;
     $hash->{LAST_RECV} = time();
+    LedController_Set($hash, $hash->{NAME}, "config", "config-general-device_name", $hash->{NAME});
+    LedController_GetConfig($hash);
+    LedController_GetInfo($hash);
     LedController_QueueIntervalUpdate($hash);
     return undef;
 }
@@ -121,8 +125,6 @@ sub LedController_QueueIntervalUpdate($;$) {
 sub LedController_Check($) {
     my ($hash) = @_;
     my $name = $hash->{NAME};
-
-    Log3 $name, 3, "LedController_Check";
 
     return if ( !LedController_CheckConnection($hash) );
 
@@ -193,7 +195,6 @@ sub LedController_Read($) {
 
     #processes all complete messages
     while ($msg) {
-        $hash->{LAST_RECV} = time();
         Log3( $name, 5, "LedController_ProcessRead: Decoding JSON message. Length: " . length($msg) . " Content: " . $msg );
         my $obj = JSON->new->utf8(0)->decode($msg);
 
@@ -261,6 +262,24 @@ sub LedController_UpdateLogLevel(@) {
     return undef;
 }
 
+
+sub LedController_Get(@) {
+    my ( $hash, $name, $cmd, @args ) = @_;
+    my $cnt = @args;
+    
+    if ( $cmd eq 'config' ) {
+        LedController_GetConfig($hash);
+    }
+    elsif ( $cmd eq 'info' ) {
+        LedController_GetInfo($hash);
+    }
+    else {
+        return "Unknown argument $cmd, choose one of config info"
+    }
+    
+    return undef;
+}
+
 sub LedController_Set(@) {
     my ( $hash, $name, $cmd, @args ) = @_;
     my $forwardToSlaves = 0;
@@ -282,12 +301,12 @@ sub LedController_Set(@) {
     # $doQueue (true|false): Should this operation be queued or executed directly on the controller?
     # $direction: Take the short route on HSV for the transition (0) or the long one (1)
     # SHUZZ: These arguments may be added to any set command here, therefore we can decode them now.
-    my ( $fadeTime, $doQueue, $doReQueue, $name, $direction, $argsError, $transitionType );
+    my ( $fadeTime, $doQueue, $doReQueue, $fadeName, $direction, $argsError, $transitionType );
     if ( $cmd eq 'on' || $cmd eq 'off' ) {
-        ( $argsError, $fadeTime, $doQueue, $direction, $doReQueue, $name, $transitionType ) = LedController_ArgsHelper( $hash, $args[0], $args[1], $args[2] );
+        ( $argsError, $fadeTime, $doQueue, $direction, $doReQueue, $fadeName, $transitionType ) = LedController_ArgsHelper( $hash, $args[0], $args[1], $args[2] );
     }
     else {
-        ( $argsError, $fadeTime, $doQueue, $direction, $doReQueue, $name, $transitionType ) = LedController_ArgsHelper( $hash, $args[1], $args[2], $args[3] );
+        ( $argsError, $fadeTime, $doQueue, $direction, $doReQueue, $fadeName, $transitionType ) = LedController_ArgsHelper( $hash, $args[1], $args[2], $args[3] );
     }
 
     return $argsError if defined($argsError);
@@ -323,7 +342,7 @@ sub LedController_Set(@) {
             return $msg;
         }
 
-        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq 'rgb' ) {
 
@@ -343,7 +362,7 @@ sub LedController_Set(@) {
         my $blue  = hex( substr( $args[0], 4, 2 ) );
         Log3( $hash, 5, "$hash->{NAME} raw: $args[0], r: $red, g: $green, b: $blue" ) if ( $hash->{helper}->{logLevel} >= 5 );
         my ( $hue, $sat, $val ) = LedController_RGB2HSV( $hash, $red, $green, $blue );
-        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq 'on' ) {
 
@@ -390,7 +409,7 @@ sub LedController_Set(@) {
         Log3( $hash, 5, "$hash->{NAME} setting VAL to $val, SAT to $sat and HUE $hue" ) if ( $hash->{helper}->{logLevel} >= 5 );
         Log3( $hash, 5, "$hash->{NAME} args[0] = $args[0], args[1] = $args[1]" )        if ( $hash->{helper}->{logLevel} >= 5 );
 
-        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq 'off' ) {
 
@@ -398,19 +417,19 @@ sub LedController_Set(@) {
         $hash->{helper}->{oldVal} = ReadingsVal( $hash->{NAME}, "val", 0 );
 
         # Now set val to zero, read other values and "turn out the light"...
-        LedController_SetHSVColor( $hash, undef, undef, 0, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetHSVColor( $hash, undef, undef, 0, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq "dimup" ) {
 
         # dimming value is first parameter, add to $val and keep hue and sat the way they were.
         my $dim = $args[0];
-        LedController_SetHSVColor( $hash, undef, undef, "+" . $dim, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetHSVColor( $hash, undef, undef, "+" . $dim, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq "dimdown" ) {
 
         # dimming value is first parameter, add to $val and keep hue and sat the way they were.
         my $dim = $args[0];
-        LedController_SetHSVColor( $hash, undef, undef, "-" . $dim, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetHSVColor( $hash, undef, undef, "-" . $dim, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq 'val' || $cmd eq 'dim' ) {
 
@@ -424,7 +443,7 @@ sub LedController_Set(@) {
         }
 
         Log3( $hash, 5, "$hash->{NAME} setting VAL to $val" );
-        LedController_SetHSVColor( $hash, undef, undef, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetHSVColor( $hash, undef, undef, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq 'sat' ) {
 
@@ -438,7 +457,7 @@ sub LedController_Set(@) {
         }
 
         Log3( $hash, 5, "$hash->{NAME} setting SAT to $sat" );
-        LedController_SetHSVColor( $hash, undef, $sat, undef, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetHSVColor( $hash, undef, $sat, undef, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq 'hue' ) {
 
@@ -454,7 +473,7 @@ sub LedController_Set(@) {
         Log3( $hash, 5, "$hash->{NAME} setting HUE to $hue" );
         Log3( $hash, 5, "$hash->{NAME} got extended args: t = $fadeTime, q = $doQueue, d=$direction" );
 
-        LedController_SetHSVColor( $hash, $hue, undef, undef, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetHSVColor( $hash, $hue, undef, undef, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq 'raw' ) {
         my ( $red, $green, $blue, $ww, $cw ) = split ',', $args[0];
@@ -465,7 +484,7 @@ sub LedController_Set(@) {
         $ww    = undef if ( length($ww) == 0 );
         $cw    = undef if ( length($cw) == 0 );
 
-        LedController_SetRAWColor( $hash, $red, $green, $blue, $ww, $cw, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $name );
+        LedController_SetRAWColor( $hash, $red, $green, $blue, $ww, $cw, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
     }
     elsif ( $cmd eq 'update' ) {
         LedController_GetHSVColor($hash);
@@ -478,25 +497,59 @@ sub LedController_Set(@) {
         my $param = LedController_GetHttpParams( $hash, "POST", "blink", "" );
         $param->{parser} = \&LedController_ParseBoolResult;
 
-        my $cmd = {};
+        my $body = {};
 
         if ( defined $args[0] ) {
             if ( LedController_isNumeric( $args[0] ) ) {
-                $cmd->{t} = $args[0];
+                $body->{t} = $args[0];
             }
             else {
                 my @c = split /,/, $args[0];
-                $cmd->{channels} = \@c;
-                $cmd->{t}        = $args[1];
+                $body->{channels} = \@c;
+                $body->{t}        = $args[1];
             }
         }
 
-        $param->{data} = LedController_EncodeJson( $hash, $cmd );
+        $param->{data} = LedController_EncodeJson( $hash, $body );
         LedController_addCall( $hash, $param );
         $forwardToSlaves = 1;
     }
+    elsif ( $cmd eq 'config' ) {
+        return "Invalid syntax: Use 'set <device> <parameter> <value>'" if (scalar @args != 2);
+
+        my $param = LedController_GetHttpParams( $hash, "POST", "config", "" );
+        $param->{parser} = \&LedController_ParseBoolResult;
+        
+        my @keys = split /-/, $args[0];
+        return "Invalid config parameter name!" if (scalar @keys < 2);
+
+        my $body = {};
+        my $curNode = $body;
+
+        for my $i (1 .. ($#keys))
+        {
+            if ($i == ($#keys)) {
+                $curNode->{$keys[$i]} = $args[1];
+            }
+            else {
+                my $newNode = {};
+                $curNode->{$keys[$i]} = $newNode;
+                $curNode = $newNode;
+            }
+        }
+
+        $param->{data} = LedController_EncodeJson( $hash, $body );
+        Log3( $hash, 3, "post config: " .  $param->{data});
+        LedController_addCall( $hash, $param );
+        Log3( $hash, 3, "Get config" );
+        LedController_GetConfig($hash);
+    }
+    elsif ( $cmd eq 'restart' ) {
+        LedController_SendSystemCommand( $hash, $cmd );
+        $forwardToSlaves = 1;
+    }
     else {
-        return "Unknown argument $cmd, choose one of hsv rgb state update hue sat stop val dim dimup dimdown on off raw pause continue blink skip"
+        return "Unknown argument $cmd, choose one of hsv rgb state update hue sat stop val dim dimup dimdown on off raw pause continue blink skip config restart"
     }
 
     if ($forwardToSlaves) {
@@ -504,6 +557,16 @@ sub LedController_Set(@) {
     }
     
     return undef;
+}
+
+sub LedController_SendSystemCommand(@) {
+    my ( $hash, $cmd ) = @_;
+    my $param = LedController_GetHttpParams( $hash, "POST", "system", "" );
+    $param->{parser} = \&LedController_ParseBoolResult;
+
+    my $body  = { cmd => $cmd };
+    $param->{data} = LedController_EncodeJson( $hash, $body );
+    LedController_addCall( $hash, $param );
 }
 
 sub LedController_ForwardToSlaves(@) {
@@ -522,28 +585,29 @@ sub LedController_ForwardToSlaves(@) {
     }
 }
 
+sub LedController_GetConfig(@) {
+    my ( $hash ) = @_;
+    my $param = LedController_GetHttpParams( $hash, "GET", "config", "" );
+    $param->{parser} = \&LedController_ParseConfig;
+    
+    $param->{data} = LedController_EncodeJson( $hash, {} );
+    LedController_addCall( $hash, $param );
+}
+
 sub LedController_SetChannelCommand(@) {
     my ( $hash, $cmd, $argsRef ) = @_;
     my $param = LedController_GetHttpParams( $hash, "POST", $cmd, "" );
     $param->{parser} = \&LedController_ParseBoolResult;
 
-    my $cmd  = {};
+    my $body  = {};
     my @args = @{$argsRef};
     if ( defined $args[0] ) {
         my @c = split /,/, $args[0];
-        $cmd->{channels} = \@c;
+        $body->{channels} = \@c;
     }
 
-    $param->{data} = LedController_EncodeJson( $hash, $cmd );
+    $param->{data} = LedController_EncodeJson( $hash, $body );
     LedController_addCall( $hash, $param );
-}
-
-sub LedController_Get(@) {
-
-    my ( $hash, $name, $cmd, @args ) = @_;
-    my $cnt = @args;
-
-    return undef;
 }
 
 sub LedController_Attr(@) {
@@ -584,57 +648,98 @@ sub LedController_Notify(@) {
     my ( $hue, $sat, $val );
 }
 
-sub LedController_GetConfig(@) {
+sub LedController_GetInfo(@) {
+    my ( $hash ) = @_;
+    my $param = LedController_GetHttpParams( $hash, "GET", "info", "" );
+    $param->{parser} = \&LedController_ParseInfo;    
+    $param->{data} = LedController_EncodeJson( $hash, {} );
 
-    my ($hash) = @_;
-    my $ip = $hash->{IP};
-
-    my $param = {
-        url      => "http://$ip/info",
-        timeout  => 30,
-        hash     => $hash,
-        method   => "GET",
-        header   => "User-Agent: fhem\r\nAccept: application/json",
-        parser   => \&LedController_ParseConfig,
-        callback => \&LedController_callback
-    };
-    Log3( $hash, 4, "$hash->{NAME}: get config request" ) if ( $hash->{helper}->{logLevel} >= 4 );
     LedController_addCall( $hash, $param );
     return undef;
 }
 
+sub LedController_IterateConfigHash($$$);
+sub LedController_IterateConfigHash($$$) {
+    my ( $hash, $readingPrefix, $ref ) = @_;
+    foreach my $key (keys %{ $ref }) {
+        my $newPrefix = $readingPrefix . "-" . $key;
+        if (ref($ref->{$key}) eq "HASH") {
+            LedController_IterateConfigHash($hash, $newPrefix, $ref->{$key});
+        }
+        else {
+            readingsBulkUpdate( $hash, $newPrefix, $ref->{$key});
+        }
+    }
+}
+
 sub LedController_ParseConfig(@) {
+    my ( $hash, $err, $data ) = @_;
+    my $res;
+
+    Log3( $hash, 3, "$hash->{NAME}: got config response" );
+
+    if ($err) {
+        Log3( $hash, 2, "$hash->{NAME}: error $err retrieving config" );
+    }
+    elsif ($data) {
+        Log3( $hash, 3, "$hash->{NAME}: config response data $data" );
+        eval {
+
+            # TODO: Can't we just store the instance of the JSON parser somewhere?
+            # Would that improve performance???
+            eval { $res = JSON->new->utf8(1)->decode($data); };
+        };
+        if ($@) {
+            Log3( $hash, 2, "$hash->{NAME}: error decoding config response $@" );
+        }
+        else {
+            Log3( $hash, 3, "$hash->{NAME}: executing readings" );
+            fhem("deletereading " . $hash->{NAME} . " config-.*", 1);
+            readingsBeginUpdate($hash);
+            LedController_IterateConfigHash($hash, "config", $res);
+            readingsEndUpdate( $hash, 1 );
+        }
+    }
+    else {
+        Log3( $hash, 2, "$hash->{NAME}: error <empty data received> retriving config" );
+    }
+    return undef;
+}
+
+sub LedController_ParseInfo(@) {
 
     #my ($param, $err, $data) = @_;
     #my ($hash) = $param->{hash};
     my ( $hash, $err, $data ) = @_;
     my $res;
 
-    Log3( $hash, 4, "$hash->{NAME}: got config response" ) if ( $hash->{helper}->{logLevel} >= 4 );
+    Log3( $hash, 3, "$hash->{NAME}: got info response" );
 
     if ($err) {
-        Log3( $hash, 2, "$hash->{NAME}: error $err retriving config" );
+        Log3( $hash, 2, "$hash->{NAME}: error $err retrieving info" );
     }
     elsif ($data) {
-        Log3( $hash, 5, "$hash->{NAME}: config response data $data" ) if ( $hash->{helper}->{logLevel} >= 5 );
+        Log3( $hash, 3, "$hash->{NAME}: info response data $data" );
         eval {
 
             # TODO: Can't we just store the instance of the JSON parser somewhere?
             # Would that improve performance???
-            $res = JSON->new->utf8(1)->decode($data);
+            eval { $res = JSON->new->utf8(1)->decode($data); };
         };
         if ($@) {
-            Log3( $hash, 2, "$hash->{NAME}: error decoding config response $@" );
+            Log3( $hash, 2, "$hash->{NAME}: error decoding info response $@" );
         }
         else {
-            $hash->{DEVICEID} = $res->{deviceid};
-            $hash->{FIRMWARE} = $res->{firmware};
-            $hash->{MAC}      = $res->{connection}->{mac};
-            LedController_GetHSVColor($hash);
+            fhem("deletereading " . $hash->{NAME} . " info-.*", 1);
+            readingsBeginUpdate($hash);
+            readingsBulkUpdate( $hash, 'info-deviceid', $res->{deviceid} );
+            readingsBulkUpdate( $hash, 'info-firmware', $res->{firmware} );
+            readingsBulkUpdate( $hash, 'info-mac', $res->{connection}->{mac} );
+            readingsEndUpdate( $hash, 1 );
         }
     }
     else {
-        Log3( $hash, 2, "$hash->{NAME}: error <empty data received> retriving config" );
+        Log3( $hash, 2, "$hash->{NAME}: error <empty data received> retrieving info" );
     }
     return undef;
 }
@@ -968,7 +1073,7 @@ sub LedController_ParseBoolResult(@) {
         Log3( $hash, 2, "$hash->{NAME}: LedController_ParseBoolResult error: $err" );
     }
     elsif ($data) {
-        $res = JSON->new->utf8(1)->decode($data);
+        eval { $res = JSON->new->utf8(1)->decode($data); };
         if ( exists $res->{error} ) {
             Log3( $hash, 3, "$hash->{NAME}: error LedController_ParseBoolResult: $data" );
         }

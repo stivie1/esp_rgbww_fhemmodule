@@ -70,8 +70,10 @@ sub LedController_Define($$) {
 
   my ( $hash, $def ) = @_;
   my @a = split( "[ \t][ \t]*", $def );
-  my $name = $a[0];
 
+  return "wrong syntax: define <name> LedController <ip> [<port>]" if ( @a != 3 && @a != 4 );
+
+  my $name = $a[0];
   $hash->{IP} = $a[2];
   $hash->{PORT} = defined( $a[3] ) ? $a[3] : 9090;
 
@@ -85,8 +87,6 @@ sub LedController_Define($$) {
   LedController_GetConfig($hash);
   $hash->{helper}->{oldVal} = 100;
   $hash->{DeviceName} = "$hash->{IP}:$hash->{PORT}";
-
-  return "wrong syntax: define <name> LedController <type> <ip-or-hostname>" if ( @a != 4 );
 
   DevIo_OpenDev( $hash, 0, "LedController_Init", "LedController_Connect" );
 }
@@ -186,7 +186,7 @@ sub LedController_Read($) {
     Log3( $name, 5, "No PARTIAL buffer" );
   }
 
-  Log3( $name, 5, "LedController_ProcessRead: Incoming data: " . $data );
+  Log3( $name, 3, "LedController_ProcessRead: Incoming data: " . $data );
 
   $buffer = $buffer . $data;
   Log3( $name, 5, "LedController_ProcessRead: Current processing buffer (PARTIAL + incoming data): " . $buffer );
@@ -199,7 +199,7 @@ sub LedController_Read($) {
     my $obj = JSON->new->utf8(0)->decode($msg);
 
     # do stuff
-    if ( $obj->{method} eq "color_event" ) {
+    if ( $obj->{method} eq "hsv_event" ) {
       LedController_UpdateReadings( $hash, $obj->{params}{h}, $obj->{params}{s}, $obj->{params}{v}, $obj->{params}{ct} );
     }
     elsif ( $obj->{method} eq "transition_finished" ) {
@@ -366,7 +366,7 @@ sub LedController_Set(@) {
   elsif ( $cmd eq 'on' ) {
 
     # Add check to only do something if the controller is REALLY turned off, i.e. val eq 0
-    my $state = InternalVal( $hash->{NAME}, "stateValue", "off" );
+    my $state = ReadingsVal( $hash->{NAME}, "stateLight", "off" );
     return undef if ( $state eq "on" );
 
     # OK, state was off
@@ -417,6 +417,15 @@ sub LedController_Set(@) {
 
     # Now set val to zero, read other values and "turn out the light"...
     LedController_SetHSVColor( $hash, undef, undef, 0, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doReQueue, $fadeName );
+  }
+  elsif ( $cmd eq 'toggle' ) {
+    my $state = ReadingsVal( $hash->{NAME}, "stateLight", "off" );
+    if ($state eq "on") {
+        LedController_Set($hash, $name, "off", @args );
+    }
+    else {
+        LedController_Set($hash, $name, "on", @args );
+    }
   }
   elsif ( $cmd eq "dimup" ) {
 
@@ -514,13 +523,13 @@ sub LedController_Set(@) {
     $forwardToSlaves = 1;
   }
   elsif ( $cmd eq 'config' ) {
-    return "Invalid syntax: Use 'set <device> <parameter> <value>'" if ( scalar @args != 2 );
+    return "Invalid syntax: Use 'set <device> <parameter> <value>'" if ( @args != 2 );
 
     my $param = LedController_GetHttpParams( $hash, "POST", "config", "" );
     $param->{parser} = \&LedController_ParseBoolResult;
 
     my @keys = split /-/, $args[0];
-    return "Invalid config parameter name!" if ( scalar @keys < 2 );
+    return "Invalid config parameter name!" if ( @keys < 2 );
 
     my $body    = {};
     my $curNode = $body;
@@ -547,14 +556,25 @@ sub LedController_Set(@) {
     $forwardToSlaves = 1;
   }
   elsif ( $cmd eq 'fw_update' ) {
-    return "Invalid syntax: Use 'set <device> fw_update <URL to version.json> [<force>]'" if ( scalar @args != 1 && scalar @args != 2);
+    return "Invalid syntax: Use 'set <device> fw_update [<URL to version.json>] [<force>]'" if ( @args > 2 );
 
-    my $force = defined($args[1]) ? $args[1] : 0;
-    LedController_FwUpdate_GetVersion( $hash, $args[0], $force );
+    my $force = 0;
+    my $url = ReadingsVal( $hash->{NAME}, "config-ota-url", "" );
+    if ( defined($args[0]) ) {
+      if ( LedController_isNumeric($args[0]) ) {
+        $force = $args[0] 
+      }
+      else {
+        $url = $args[0];
+        $force = defined($args[1]) ? $args[1] : 0;
+      }      
+    }
+ 
+    LedController_FwUpdate_GetVersion( $hash, $url, $force );
   }
   else {
     return
-"Unknown argument $cmd, choose one of hsv rgb state update hue sat stop val dim dimup dimdown on off raw pause continue blink skip config restart fw_update";
+"Unknown argument $cmd, choose one of hsv rgb state update hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update";
   }
 
   if ($forwardToSlaves) {
@@ -633,7 +653,7 @@ sub LedController_Attr(@) {
         }
         next if not defined $offsets;
         my @offSplit = split /,/, $offsets;
-        if ( scalar(@offSplit) != 3 ) {
+        if ( @offSplit != 3 ) {
           return 'Invalid Syntax for attribute slaves. Use: slave:off_h,off_s,off_v';
         }
       }
@@ -1057,7 +1077,7 @@ sub LedController_SetHSVColor(@) {
   }
   else {
 
-    #Log3 ($hash, 4, "$hash->{NAME}: encoded json data: $data ");
+    Log3 ($hash, 4, "$hash->{NAME}: encoded json data: $data ");
 
     my $param = {
       url      => "http://$ip/color?mode=HSV",
@@ -1072,7 +1092,7 @@ sub LedController_SetHSVColor(@) {
       loglevel => 5
     };
 
-    Log3( $hash, 5, "$hash->{NAME}: set HSV color request \n$param" ) if ( $hash->{helper}->{logLevel} >= 5 );
+    Log3( $hash, 5, "$hash->{NAME}: set HSV color request \n$param" );
     LedController_addCall( $hash, $param );
   }
 

@@ -28,6 +28,7 @@ package main;
 use strict;
 use warnings;
 
+use DevIo;
 use Time::HiRes;
 use Time::HiRes qw(usleep nanosleep);
 use Time::HiRes qw(time);
@@ -478,7 +479,12 @@ sub LedController_Set(@) {
   elsif ( $cmd eq 'raw' ) {
     my ( $red, $green, $blue, $ww, $cw ) = split ',', $args[0];
 
-
+    $red = undef if ( length($red) == 0 );
+    $green = undef if ( length($green) == 0 );
+    $blue = undef if ( length($blue) == 0 );
+    $ww = undef if ( length($ww) == 0 );
+    $cw = undef if ( length($cw) == 0 );
+    
     LedController_SetRAWColor( $hash, $red, $green, $blue, $ww, $cw, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'continue' || $cmd eq 'pause' || $cmd eq 'skip' || $cmd eq 'stop' ) {

@@ -296,7 +296,7 @@ sub LedController_Set(@) {
     my $argsOffset = 1;
     $argsOffset = $argCmds{$cmd} if ( exists $argCmds{$cmd} );
     ( $argsError, $fadeTime, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels ) = LedController_ArgsHelper( $hash, $argsOffset, @args );
-    if ( !defined($fadeTime) && ($cmd ne 'blink') ) {
+    if ( !defined($fadeTime) && ( $cmd ne 'blink' ) ) {
       $fadeTime = AttrVal( $hash->{NAME}, 'defaultRamp', 0 );
     }
   }
@@ -479,12 +479,12 @@ sub LedController_Set(@) {
   elsif ( $cmd eq 'raw' ) {
     my ( $red, $green, $blue, $ww, $cw ) = split ',', $args[0];
 
-    $red = undef if ( length($red) == 0 );
+    $red   = undef if ( length($red) == 0 );
     $green = undef if ( length($green) == 0 );
-    $blue = undef if ( length($blue) == 0 );
-    $ww = undef if ( length($ww) == 0 );
-    $cw = undef if ( length($cw) == 0 );
-    
+    $blue  = undef if ( length($blue) == 0 );
+    $ww    = undef if ( length($ww) == 0 );
+    $cw    = undef if ( length($cw) == 0 );
+
     LedController_SetRAWColor( $hash, $red, $green, $blue, $ww, $cw, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'continue' || $cmd eq 'pause' || $cmd eq 'skip' || $cmd eq 'stop' ) {
@@ -497,12 +497,12 @@ sub LedController_Set(@) {
 
     my $body = {};
 
-    if (defined $channels) {
-        my @c = split /,/, $channels;
-        $body->{channels} = \@c;
+    if ( defined $channels ) {
+      my @c = split /,/, $channels;
+      $body->{channels} = \@c;
     }
-    $body->{t} = $fadeTime if defined $fadeTime;
-    $body->{q} = $doQueue if defined($doQueue);
+    $body->{t} = $fadeTime  if defined $fadeTime;
+    $body->{q} = $doQueue   if defined($doQueue);
     $body->{r} = $doRequeue if defined($doRequeue);
 
     eval { $param->{data} = LedController_EncodeJson( $hash, $body ) };
@@ -1068,9 +1068,9 @@ sub LedController_UpdateReadingsHsv(@) {
   Log3( $hash, 5, "$hash->{NAME}: begin Readings Update\n   hue: $hue\n   sat: $sat\n   val:$val\n   ct : $colorTemp\n   HSV: $hue,$sat,$val\n   RGB: $xrgb" );
 
   readingsBeginUpdate($hash);
-  readingsBulkUpdate( $hash, 'hue', $hue ) if defined $hue;
-  readingsBulkUpdate( $hash, 'sat', $sat ) if defined $sat;
-  readingsBulkUpdate( $hash, 'val', $val ) if defined $val;
+  readingsBulkUpdate( $hash, 'hue', $hue )       if defined $hue;
+  readingsBulkUpdate( $hash, 'sat', $sat )       if defined $sat;
+  readingsBulkUpdate( $hash, 'val', $val )       if defined $val;
   readingsBulkUpdate( $hash, 'ct',  $colorTemp ) if defined $colorTemp;
   readingsBulkUpdate( $hash, 'hsv', "$hue,$sat,$val" );
   readingsBulkUpdate( $hash, 'rgb', $xrgb );
@@ -1084,11 +1084,11 @@ sub LedController_UpdateReadingsRaw(@) {
   my ( $hash, $r, $g, $b, $cw, $ww ) = @_;
 
   readingsBeginUpdate($hash);
-  readingsBulkUpdate( $hash, 'raw_red', $r );
+  readingsBulkUpdate( $hash, 'raw_red',   $r );
   readingsBulkUpdate( $hash, 'raw_green', $g );
-  readingsBulkUpdate( $hash, 'raw_blue', $b );
-  readingsBulkUpdate( $hash, 'raw_cw',  $cw );
-  readingsBulkUpdate( $hash, 'raw_ww', $ww );
+  readingsBulkUpdate( $hash, 'raw_blue',  $b );
+  readingsBulkUpdate( $hash, 'raw_cw',    $cw );
+  readingsBulkUpdate( $hash, 'raw_ww',    $ww );
   readingsBulkUpdate( $hash, 'colorMode', "raw" );
   readingsEndUpdate( $hash, 1 );
   return undef;
@@ -1121,7 +1121,7 @@ sub LedController_SetRAWColor(@) {
     Log3( $hash, 2, "$hash->{NAME}: error encoding RAW color request $@" );
     return undef;
   }
-   
+
   Log3( $hash, 4, "$hash->{NAME}: set RAW color request r:$red g:$green b:$blue ww:$warmWhite cw:$coldWhite" );
   Log3( $hash, 3, "$hash->{NAME}: set RAW color request \n$param->{data}" );
   LedController_addCall( $hash, $param );
@@ -1160,7 +1160,7 @@ sub LedController_ParseBoolResult(@) {
 sub LedController_addCall(@) {
   my ( $hash, $param ) = @_;
 
-#  Log3( $hash, 5, "$hash->{NAME}: add to queue: \n\n" . Dumper $param);
+  #  Log3( $hash, 5, "$hash->{NAME}: add to queue: \n\n" . Dumper $param);
 
   # add to queue
   push @{ $hash->{helper}->{cmdQueue} }, $param;
@@ -1287,18 +1287,18 @@ sub LedController_HSV2RGB(@) {
 
 sub LedController_ArgsHelper(@) {
   my ( $hash, $offset, @args ) = @_;
-  
-  my ($channels, $requeue, $flags, $time, $name);
+
+  my ( $channels, $requeue, $flags, $time, $name );
   my $queue          = 'single';
   my $d              = '1';
   my $transitionType = 'fade';
-  for my $i ($offset .. $#args) {
+  for my $i ( $offset .. $#args ) {
     my $arg = $args[$i];
-    if ($arg =~ /\((.*)\)/) {
-    
+    if ( $arg =~ /\((.*)\)/ ) {
+
       $channels = $1;
     }
-    elsif (LedController_isNumeric($arg)) {
+    elsif ( LedController_isNumeric($arg) ) {
       $time = $arg * 1000;
     }
     else {
@@ -1323,7 +1323,7 @@ sub LedController_ArgsHelper(@) {
       $transitionType = 'solid' if ( $flags =~ m/s/i );
     }
   }
-  Log3( $hash, 5, "LedController_ArgsHelper: Time: $time | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels");
+  Log3( $hash, 5, "LedController_ArgsHelper: Time: $time | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
   return ( undef, $time, $queue, $d, $requeue, $name, $transitionType, $channels );
 }
 

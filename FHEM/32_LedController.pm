@@ -214,8 +214,8 @@ sub LedController_Read($) {
     }
     elsif ( $obj->{method} eq "clock_slave_status" ) {
       readingsBeginUpdate($hash);
-      readingsBulkUpdate( $hash, 'clock_slave_offset',     $obj->{params}{offset} );
-      readingsBulkUpdate( $hash, 'clock_current_interval', $obj->{params}{current_interval} );
+      readingsBulkUpdate( $hash, 'clockSlaveOffset',     $obj->{params}{offset} );
+      readingsBulkUpdate( $hash, 'clockCurrentInterval', $obj->{params}{current_interval} );
       readingsEndUpdate( $hash, 1 );
     }
     else {

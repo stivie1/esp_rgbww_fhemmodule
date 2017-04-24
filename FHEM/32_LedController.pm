@@ -35,6 +35,7 @@ use Time::HiRes qw(time);
 use JSON;
 use JSON::XS;
 use Data::Dumper;
+use SetExtensions;
 
 $Data::Dumper::Indent   = 1;
 $Data::Dumper::Sortkeys = 1;
@@ -573,8 +574,8 @@ sub LedController_Set(@) {
     LedController_FwUpdate_GetVersion( $hash, $url, $force );
   }
   else {
-    return
-"Unknown argument $cmd, choose one of hsv rgb:colorpicker,RGB state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update";
+    my $cmdList = "hsv rgb:colorpicker,RGB state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update";
+    return SetExtensions($hash, $cmdList, $name, $cmd, @args);
   }
 
   if ($forwardToSlaves) {

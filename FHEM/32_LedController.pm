@@ -574,7 +574,7 @@ sub LedController_Set(@) {
   }
   else {
     return
-"Unknown argument $cmd, choose one of hsv rgb state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update";
+"Unknown argument $cmd, choose one of hsv rgb:colorpicker,RGB state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update";
   }
 
   if ($forwardToSlaves) {

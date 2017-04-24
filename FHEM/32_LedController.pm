@@ -188,7 +188,7 @@ sub LedController_Read($) {
     Log3( $name, 5, "No PARTIAL buffer" );
   }
 
-  Log3( $name, 3, "LedController_ProcessRead: Incoming data: " . $data );
+  Log3( $name, 5, "LedController_ProcessRead: Incoming data: " . $data );
 
   $buffer = $buffer . $data;
   Log3( $name, 5, "LedController_ProcessRead: Current processing buffer (PARTIAL + incoming data): " . $buffer );
@@ -200,7 +200,6 @@ sub LedController_Read($) {
     Log3( $name, 5, "LedController_ProcessRead: Decoding JSON message. Length: " . length($msg) . " Content: " . $msg );
     my $obj = JSON->new->utf8(0)->decode($msg);
 
-    # do stuff
     if ( $obj->{method} eq "hsv_event" ) {
       LedController_UpdateReadingsHsv( $hash, $obj->{params}{h}, $obj->{params}{s}, $obj->{params}{v}, $obj->{params}{ct} );
     }
@@ -212,6 +211,12 @@ sub LedController_Read($) {
     }
     elsif ( $obj->{method} eq "keep_alive" ) {
       $hash->{LAST_RECV} = $now;
+    }
+    elsif ( $obj->{method} eq "clock_slave_status" ) {
+      readingsBeginUpdate($hash);
+      readingsBulkUpdate( $hash, 'clock_slave_offset',     $obj->{params}{offset} );
+      readingsBulkUpdate( $hash, 'clock_current_interval', $obj->{params}{current_interval} );
+      readingsEndUpdate( $hash, 1 );
     }
     else {
       Log3( $name, 3, "LedController_ProcessRead: Unknown message type: " . $obj->{method} );
@@ -815,6 +820,7 @@ sub LedController_ParseFwVersionResult(@) {
   elsif ($data) {
     eval { $res = JSON->new->utf8(1)->decode($data); };
     if ($@) {
+      readingsSingleUpdate( $hash, "lastFwUpdate", "error decoding FW version", 1 );
       Log3( $hash, 2, "$hash->{NAME}: LedController_ParseFwVersionResult error decoding FW version: $@" );
       return undef;
     }
@@ -826,12 +832,16 @@ sub LedController_ParseFwVersionResult(@) {
         Log3( $hash, 3, "$hash->{NAME}: Firmware already installed: $newFw. Still updating due to force flag!" );
       }
       else {
-        Log3( $hash, 3, "$hash->{NAME}: Update skipped. Firmware already installed: $newFw" );
+        my $msg = "Update skipped. Firmware already installed: $newFw";
+        readingsSingleUpdate( $hash, "lastFwUpdate", $msg, 1 );
+        Log3( $hash, 3, "$hash->{NAME}: $msg" );
         return undef;
       }
     }
     else {
-      Log3( $hash, 3, "$hash->{NAME}: Updating firmware now. Current firmware: " . $curFw . " New firmare: " . $newFw );
+      my $msg = "Updating firmware now. Current firmware: $curFw New firmare: $newFw";
+      readingsSingleUpdate( $hash, "lastFwUpdate", $msg, 1 );
+      Log3( $hash, 3, "$hash->{NAME}: $msg" );
     }
 
     my $param = LedController_GetHttpParams( $hash, "POST", "update", "" );
@@ -852,11 +862,14 @@ sub LedController_ParseFwUpdateProgress(@) {
   my $res;
   if ($err) {
     Log3( $hash, 2, "$hash->{NAME}: LedController_ParseFwUpdateProgress error: $err" );
+    readingsSingleUpdate( $hash, "lastFwUpdate", "ParseFwUpdateProgress error: $err", 1 );
   }
   elsif ($data) {
     eval { $res = JSON->new->utf8(1)->decode($data); };
     if ($@) {
-      Log3( $hash, 4, "$hash->{NAME}: error decoding FW update status $@" );
+      my $msg = "error decoding FW update status $@";
+      readingsSingleUpdate( $hash, "lastFwUpdate", $msg, 1 );
+      Log3( $hash, 4, "$hash->{NAME}: $msg" );
       return undef;
     }
 
@@ -864,23 +877,26 @@ sub LedController_ParseFwUpdateProgress(@) {
     Log3( $hash, 3, "$hash->{NAME}: LedController_ParseFwUpdateProgress. status: $status" );
 
     if ( $status == 2 ) {
-
-      # OTA_SUCCESS_REBOOT
-      Log3( $hash, 3, "$hash->{NAME}: LedController_ParseFwUpdateProgress - Update successful - Restarting device..." );
+      my $msg = "Update successful - Restarting device...";
+      readingsSingleUpdate( $hash, "lastFwUpdate", $msg, 1 );
+      Log3( $hash, 3, "$hash->{NAME}: LedController_ParseFwUpdateProgress - $msg" );
       LedController_SendSystemCommand( $hash, "restart" );
     }
     elsif ( $status == 1 ) {
 
       # OTA_PROCESSING
       LedController_QueueFwUpdateProgressCheck($hash);
+      readingsSingleUpdate( $hash, "lastFwUpdate", "Update in progress", 1 );
     }
     elsif ( $status == 4 ) {
 
       # OTA_FAILED
       Log3( $hash, 3, "$hash->{NAME}: LedController_ParseFwUpdateProgress - Update failed!" );
+      readingsSingleUpdate( $hash, "lastFwUpdate", "Update failed!", 1 );
     }
     else {
       Log3( $hash, 3, "$hash->{NAME}: LedController_ParseFwUpdateProgress - Unexpected update status: $status" );
+      readingsSingleUpdate( $hash, "lastFwUpdate", "Unexpected update status: $status", 1 );
     }
   }
 

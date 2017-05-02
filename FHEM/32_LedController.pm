@@ -415,7 +415,7 @@ sub LedController_Set(@) {
     $hash->{helper}->{oldVal} = ReadingsVal( $hash->{NAME}, "val", 0 );
 
     # Now set val to zero, read other values and "turn out the light"...
-    LedController_SetHSVColor( $hash, undef, undef, 0, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, "+0", "+0", 0, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'toggle' ) {
     my $state = ReadingsVal( $hash->{NAME}, "stateLight", "off" );
@@ -816,6 +816,7 @@ sub LedController_ParseFwVersionResult(@) {
 
   Log3( $hash, 4, "$hash->{NAME}: LedController_FwVersionCallback" );
   if ($err) {
+    readingsSingleUpdate( $hash, "lastFwUpdate", "Error: $err", 1 );
     Log3( $hash, 2, "$hash->{NAME}: LedController_FwVersionCallback error: $err" );
   }
   elsif ($data) {
@@ -839,11 +840,10 @@ sub LedController_ParseFwVersionResult(@) {
         return undef;
       }
     }
-    else {
-      my $msg = "Updating firmware now. Current firmware: $curFw New firmare: $newFw";
-      readingsSingleUpdate( $hash, "lastFwUpdate", $msg, 1 );
-      Log3( $hash, 3, "$hash->{NAME}: $msg" );
-    }
+
+    my $msg = "Updating firmware now. Current firmware: $curFw New firmare: $newFw";
+    readingsSingleUpdate( $hash, "lastFwUpdate", $msg, 1 );
+    Log3( $hash, 3, "$hash->{NAME}: $msg" );
 
     my $param = LedController_GetHttpParams( $hash, "POST", "update", "" );
     $param->{parser} = \&LedController_ParseBoolResult;

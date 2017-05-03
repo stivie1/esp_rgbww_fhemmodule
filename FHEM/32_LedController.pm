@@ -296,14 +296,18 @@ sub LedController_Set(@) {
 
   #Log3( $hash, 3, "$hash->{NAME} (Set) called with $cmd, busy flag is $hash->{helper}->{isBusy}\n name is $name, args " . Dumper(@args) );
 
-  my ( $argsError, $fadeTime, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels );
+  my ( $argsError, $fadeTime, $fadeSpeed, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels );
   if ( $cmd ne "?" ) {
     my %argCmds = ( 'on' => 0, 'off' => 0, 'toggle' => 0, 'blink' => 0, 'pause' => 0, 'skip' => 0, 'continue' => 0, 'stop' => 0 );
     my $argsOffset = 1;
     $argsOffset = $argCmds{$cmd} if ( exists $argCmds{$cmd} );
-    ( $argsError, $fadeTime, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels ) = LedController_ArgsHelper( $hash, $argsOffset, @args );
+    ( $argsError, $fadeTime, $fadeSpeed, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels ) =
+      LedController_ArgsHelper( $hash, $argsOffset, @args );
     if ( !defined($fadeTime) && ( $cmd ne 'blink' ) ) {
       $fadeTime = AttrVal( $hash->{NAME}, 'defaultRamp', 0 );
+    }
+    if ( defined($fadeSpeed) && ( $cmd eq 'blink' ) ) {
+      $argsError = "Fade speed parameter cannot be used with command $cmd";
     }
   }
 
@@ -340,7 +344,7 @@ sub LedController_Set(@) {
       return $msg;
     }
 
-    LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'rgb' ) {
 
@@ -360,7 +364,7 @@ sub LedController_Set(@) {
     my $blue  = hex( substr( $args[0], 4, 2 ) );
     Log3( $hash, 5, "$hash->{NAME} raw: $args[0], r: $red, g: $green, b: $blue" );
     my ( $hue, $sat, $val ) = LedController_RGB2HSV( $hash, $red, $green, $blue );
-    LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'on' ) {
 
@@ -407,7 +411,7 @@ sub LedController_Set(@) {
     Log3( $hash, 5, "$hash->{NAME} setting VAL to $val, SAT to $sat and HUE $hue" );
     Log3( $hash, 5, "$hash->{NAME} args[0] = $args[0], args[1] = $args[1]" );
 
-    LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'off' ) {
 
@@ -415,7 +419,7 @@ sub LedController_Set(@) {
     $hash->{helper}->{oldVal} = ReadingsVal( $hash->{NAME}, "val", 0 );
 
     # Now set val to zero, read other values and "turn out the light"...
-    LedController_SetHSVColor( $hash, "+0", "+0", 0, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, "+0", "+0", 0, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'toggle' ) {
     my $state = ReadingsVal( $hash->{NAME}, "stateLight", "off" );
@@ -430,13 +434,15 @@ sub LedController_Set(@) {
 
     # dimming value is first parameter, add to $val and keep hue and sat the way they were.
     my $dim = $args[0];
-    LedController_SetHSVColor( $hash, undef, undef, "+" . $dim, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, undef, undef, "+" . $dim, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue,
+      $fadeName );
   }
   elsif ( $cmd eq "dimdown" ) {
 
     # dimming value is first parameter, add to $val and keep hue and sat the way they were.
     my $dim = $args[0];
-    LedController_SetHSVColor( $hash, undef, undef, "-" . $dim, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, undef, undef, "-" . $dim, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue,
+      $fadeName );
   }
   elsif ( $cmd eq 'val' || $cmd eq 'dim' ) {
 
@@ -450,7 +456,7 @@ sub LedController_Set(@) {
     }
 
     Log3( $hash, 5, "$hash->{NAME} setting VAL to $val" );
-    LedController_SetHSVColor( $hash, undef, undef, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, undef, undef, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'sat' ) {
 
@@ -464,7 +470,7 @@ sub LedController_Set(@) {
     }
 
     Log3( $hash, 5, "$hash->{NAME} setting SAT to $sat" );
-    LedController_SetHSVColor( $hash, undef, $sat, undef, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, undef, $sat, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'hue' ) {
 
@@ -480,7 +486,7 @@ sub LedController_Set(@) {
     Log3( $hash, 5, "$hash->{NAME} setting HUE to $hue" );
     Log3( $hash, 5, "$hash->{NAME} got extended args: t = $fadeTime, q = $doQueue, d=$direction" );
 
-    LedController_SetHSVColor( $hash, $hue, undef, undef, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, $hue, undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'raw' ) {
     my ( $red, $green, $blue, $ww, $cw ) = split ',', $args[0];
@@ -575,7 +581,7 @@ sub LedController_Set(@) {
   }
   else {
     my $cmdList = "hsv rgb:colorpicker,RGB state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update";
-    return SetExtensions($hash, $cmdList, $name, $cmd, @args);
+    return SetExtensions( $hash, $cmdList, $name, $cmd, @args );
   }
 
   if ($forwardToSlaves) {
@@ -1024,11 +1030,16 @@ sub LedController_EncodeJson($$) {
 }
 
 sub LedController_SetHSVColor(@) {
-  my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name ) = @_;
+  my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $name ) = @_;
   Log3( $hash, 3, "$hash->{NAME}: called SetHSVColor $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name)" );
 
   if ( !defined($hue) && !defined($sat) && !defined($val) && !defined($colorTemp) ) {
     Log3( $hash, 3, "$hash->{NAME}: error: All HSVCT components undefined!" );
+    return undef;
+  }
+
+  if ( defined($fadeTime) && defined($fadeSpeed) ) {
+    Log3( $hash, 3, "$hash->{NAME}: error: fadeTime and fadeSpeed cannot be used at the same time!" );
     return undef;
   }
 
@@ -1041,6 +1052,7 @@ sub LedController_SetHSVColor(@) {
   $cmd->{hsv}->{ct} = $colorTemp      if defined($colorTemp);
   $cmd->{cmd}       = $transitionType if defined($transitionType);
   $cmd->{t}         = $fadeTime       if defined($fadeTime);
+  $cmd->{s}         = $fadeSpeed      if defined($fadeSpeed);
   $cmd->{q}         = $doQueue        if defined($doQueue);
   $cmd->{d}         = $direction      if defined($direction);
   $cmd->{r}         = $doRequeue      if defined($doRequeue);
@@ -1305,7 +1317,7 @@ sub LedController_HSV2RGB(@) {
 sub LedController_ArgsHelper(@) {
   my ( $hash, $offset, @args ) = @_;
 
-  my ( $channels, $requeue, $flags, $time, $name );
+  my ( $channels, $requeue, $flags, $time, $speed, $name );
   my $queue          = 'single';
   my $d              = '1';
   my $transitionType = 'fade';
@@ -1317,6 +1329,9 @@ sub LedController_ArgsHelper(@) {
     }
     elsif ( LedController_isNumeric($arg) ) {
       $time = $arg * 1000;
+    }
+    elsif ( substr( $arg, 0, 1 ) == "s" && LedController_isNumeric( substr( $arg, 1 ) ) ) {
+      $speed = $arg;
     }
     else {
       ( $flags, $name ) = split /:/, $arg;
@@ -1341,7 +1356,7 @@ sub LedController_ArgsHelper(@) {
     }
   }
   Log3( $hash, 5, "LedController_ArgsHelper: Time: $time | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
-  return ( undef, $time, $queue, $d, $requeue, $name, $transitionType, $channels );
+  return ( undef, $time, $speed, $queue, $d, $requeue, $name, $transitionType, $channels );
 }
 
 sub LedController_isNumeric {

@@ -1067,7 +1067,7 @@ sub LedController_SetHSVColor(@) {
   }
   else {
 
-    Log3( $hash, 4, "$hash->{NAME}: encoded json data: $data " );
+    Log3( $hash, 3, "$hash->{NAME}: encoded json data: $data " );
 
     my $param = {
       url      => "http://$ip/color",
@@ -1357,7 +1357,7 @@ sub LedController_ArgsHelper(@) {
       $transitionType = 'solid' if ( $flags =~ m/s/i );
     }
   }
-  Log3( $hash, 3, "LedController_ArgsHelper: Time: $time | Speed: $speed | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
+  Log3( $hash, 5, "LedController_ArgsHelper: Time: $time | Speed: $speed | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
   return ( undef, $time, $speed, $queue, $d, $requeue, $name, $transitionType, $channels );
 }
 

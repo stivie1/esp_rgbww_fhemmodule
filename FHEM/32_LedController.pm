@@ -53,7 +53,7 @@ sub LedController_Initialize(@) {
   $hash->{AttrFn}     = 'LedController_Attr';
   $hash->{NotifyFn}   = 'LedController_Notify';
   $hash->{ReadFn}     = 'LedController_Read';
-  $hash->{AttrList}   = "defaultRamp defaultColor defaultHue defaultSat defaultVal colorTemp slaves" . " $readingFnAttributes";
+  $hash->{AttrList}   = "defaultRamp defaultColor defaultHue defaultSat defaultVal slaves" . " $readingFnAttributes";
   require "HttpUtils.pm";
 
   # initialize message bus and process framework
@@ -290,21 +290,17 @@ sub LedController_Set(@) {
   my ( $hash, $name, $cmd, @args ) = @_;
   my $forwardToSlaves = 0;
 
-  # $colorTemp : Color temperature in Kelvin (K). Can be set in attr. Default 2700K.
-  # Note: rangeCheck is performed in attr method, so a simple AttrVal with 2700 as default value is enough here.
-  my $colorTemp = AttrVal( $hash->{NAME}, 'colorTemp', 2700 );
-
   #Log3( $hash, 3, "$hash->{NAME} (Set) called with $cmd, busy flag is $hash->{helper}->{isBusy}\n name is $name, args " . Dumper(@args) );
 
-  my ( $argsError, $fadeTime, $fadeSpeed, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels );
+  my ( $argsError, $fadeTime, $fadeSpeed, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels, $colorTemp );
   if ( $cmd ne "?" ) {
     my %argCmds = ( 'on' => 0, 'off' => 0, 'toggle' => 0, 'blink' => 0, 'pause' => 0, 'skip' => 0, 'continue' => 0, 'stop' => 0 );
     my $argsOffset = 1;
     $argsOffset = $argCmds{$cmd} if ( exists $argCmds{$cmd} );
     ( $argsError, $fadeTime, $fadeSpeed, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels ) =
       LedController_ArgsHelper( $hash, $argsOffset, @args );
-    if ( !defined($fadeTime) && ( $cmd ne 'blink' ) ) {
-      $fadeTime = AttrVal( $hash->{NAME}, 'defaultRamp', 0 );
+    if ( !defined($fadeTime) && !defined($fadeSpeed) && ( $cmd ne 'blink' ) ) {
+      $fadeTime = AttrVal( $hash->{NAME}, 'defaultRamp', 700 );
     }
     if ( defined($fadeSpeed) && ( $cmd eq 'blink' ) ) {
       $argsError = "Fade speed parameter cannot be used with command $cmd";
@@ -365,6 +361,15 @@ sub LedController_Set(@) {
     Log3( $hash, 5, "$hash->{NAME} raw: $args[0], r: $red, g: $green, b: $blue" );
     my ( $hue, $sat, $val ) = LedController_RGB2HSV( $hash, $red, $green, $blue );
     LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+  }
+  elsif ( $cmd eq 'ct' ) {
+    my $colorTemp = $args[0];
+    if( !LedController_rangeCheck( $colorTemp, 2000, 10000) ){
+      Log3 ($hash, 3, "$hash->{NAME} colorTemp must be a number from 2000-10000");
+      return "$hash->{NAME} colorTemp must be a number from 2000-10000";
+    }
+
+    LedController_SetHSVColor( $hash, undef, undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'on' ) {
 
@@ -615,7 +620,7 @@ sub LedController_ForwardToSlaves(@) {
   for my $slaveDev (@slaves) {
     my ( $slaveName, $offsets ) = split /:/, $slaveDev;
 
-    my $slaveCmd = "set $slaveName $cmd " . join( ",", @{$args} );
+    my $slaveCmd = "set $slaveName $cmd " . join( " ", @{$args} );
     Log3( $hash, 3, "$hash->{NAME} LedController_ForwardToSlaves: $slaveCmd" );
     fhem($slaveCmd);
   }
@@ -654,10 +659,7 @@ sub LedController_Attr(@) {
   my $hash = $defs{$device};
 
   if ( $cmd eq 'set' ) {
-    if ( $attribName eq 'colorTemp' ) {
-      return "colorTemp must be between 2000 and 10000" if !LedController_rangeCheck( $attribVal, 2000, 10000 );
-    }
-    elsif ( $attribName eq 'slaves' ) {
+    if ( $attribName eq 'slaves' ) {
       my @slaves = split / /, $attribVal;
       for my $slaveDev (@slaves) {
         my ( $slaveName, $offsets ) = split /:/, $slaveDev;
@@ -980,14 +982,14 @@ sub LedController_GetQueuePolicyFlags($) {
 }
 
 sub LedController_SetHSVColor_Slaves(@) {
-  my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name ) = @_;
+  my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $name ) = @_;
 
   my $slaveAttr = AttrVal( $hash->{NAME}, "slaves", "" );
   return if ( $slaveAttr eq "" );
 
   my $flags = '';
   $flags .= LedController_GetQueuePolicyFlags($doQueue);
-  $flags .= "r" if $doRequeue;
+  $flags .= "r" if defined($doRequeue) && $doRequeue;
   $flags .= ":$name" if defined($name);
 
   $fadeTime /= 1000.0;
@@ -1331,7 +1333,7 @@ sub LedController_ArgsHelper(@) {
       $time = $arg * 1000;
     }
     elsif ( substr( $arg, 0, 1 ) == "s" && LedController_isNumeric( substr( $arg, 1 ) ) ) {
-      $speed = $arg;
+      $speed = substr( $arg, 1 );
     }
     else {
       ( $flags, $name ) = split /:/, $arg;
@@ -1355,7 +1357,7 @@ sub LedController_ArgsHelper(@) {
       $transitionType = 'solid' if ( $flags =~ m/s/i );
     }
   }
-  Log3( $hash, 5, "LedController_ArgsHelper: Time: $time | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
+  Log3( $hash, 3, "LedController_ArgsHelper: Time: $time | Speed: $speed | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
   return ( undef, $time, $speed, $queue, $d, $requeue, $name, $transitionType, $channels );
 }
 

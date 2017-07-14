@@ -1,20 +1,3 @@
-##############################################
-# $Id: 32_LedController.pm 0 2016-05-01 12:00:00Z herrmannj $
-
-# TODO
-# I'm fully aware of this http://xkcd.com/1695/
-#
-# * timer driven updates - InternalTimer(gettimeofday()+0.2, LedController_...
-#   -> start as soon as an animation is started
-#   -> stop when h,s,v have not changed for one timer cycle (we don't want to waste cycles when the lights are static)
-#   -> use the blocking update method in the feature_stop branch, check for issues with using blocking and non blocking http calls
-#
-
-# versions
-# 00 POC
-# 01 initial working version
-# 02 stabilized, transitions working, initial use of attrs
-
 # verbose level
 # 0: quit
 # 1: error
@@ -24,7 +7,6 @@
 # 5: 2nd technical level (full internal reporting)
 
 package main;
-
 use strict;
 use warnings;
 
@@ -53,19 +35,9 @@ sub LedController_Initialize(@) {
   $hash->{AttrFn}     = 'LedController_Attr';
   $hash->{NotifyFn}   = 'LedController_Notify';
   $hash->{ReadFn}     = 'LedController_Read';
-  $hash->{AttrList}   = "defaultRamp defaultColor defaultHue defaultSat defaultVal slaves" . " $readingFnAttributes";
+  $hash->{AttrList}   = "defaultRamp slaves" . " $readingFnAttributes";
   require "HttpUtils.pm";
-
-  # initialize message bus and process framework
-  #require "Broker.pm";
-  #my %service = (
-  #  'functions' => {
-  #    'connectFn' => 'LedControllerService_Initialize'
-  #  }
-  #);
-  #'LedController_InitializeChild'
-  #Broker::RESPONSEService('LedControllerService', \%service);
-
+  
   return undef;
 }
 
@@ -286,6 +258,7 @@ sub LedController_Get(@) {
   return undef;
 }
 
+sub LedController_Set(@);
 sub LedController_Set(@) {
   my ( $hash, $name, $cmd, @args ) = @_;
   my $forwardToSlaves = 0;
@@ -324,17 +297,17 @@ sub LedController_Set(@) {
       Log3( $hash, 3, $msg );
       return $msg;
     }
-    if ( defined($hue) && !LedController_rangeCheck( $hue, 0, 360 ) ) {
+    if (defined $hue && !LedController_rangeCheck( $hue, 0, 360 ) ) {
       my $msg = "$hash->{NAME} HUE must be a number from 0-360";
       Log3( $hash, 3, $msg );
       return $msg;
     }
-    if ( ( length($sat) > 0 ) && !LedController_rangeCheck( $sat, 0, 100 ) ) {
+    if (defined $sat && !LedController_rangeCheck( $sat, 0, 100 ) ) {
       my $msg = "$hash->{NAME} SAT must be a number from 0-100";
       Log3( $hash, 3, $msg );
       return $msg;
     }
-    if ( ( length($val) > 0 ) && !LedController_rangeCheck( $val, 0, 100 ) ) {
+    if (defined $val && !LedController_rangeCheck( $val, 0, 100 ) ) {
       my $msg = "$hash->{NAME} VAL must be a number from 0-100";
       Log3( $hash, 3, $msg );
       return $msg;
@@ -384,39 +357,8 @@ sub LedController_Set(@) {
     if ( $val eq 0 ) {
       $val = 100;
     }
-    my $hue = InternalVal( $hash->{NAME}, "hueValue", 0 );
-    my $sat = InternalVal( $hash->{NAME}, "satValue", 0 );
 
-    # Load default color from attributes (DEPRECATED)
-    my $defaultColor = AttrVal( $hash->{NAME}, 'defaultColor', undef );
-    if ( defined $defaultColor ) {
-      Log3( $hash, 2, "$hash->{NAME} attr \"defaultColor\" is deprecated. Please use the new Attrs defaultHue, defaultSat and defaultVal individually." );
-
-      # Split defaultColor and if all three components pass rangeCheck set them.
-      my ( $dcHue, $dcSat, $dcVal ) = split( ',', $defaultColor );
-      if ( LedController_rangeCheck( $dcHue, 0, 360 ) && LedController_rangeCheck( $dcSat, 0, 100 ) && LedController_rangeCheck( $dcVal, 0, 100 ) ) {
-
-        # defaultColor values are valid. Overwrite current hue/sat/val.
-        $hue = $dcHue;
-        $sat = $dcSat;
-        $val = $dcVal;
-      }
-    }
-
-    # defaultHue/Sat/Val will overwrite old values if present because this is "on" cmd.
-    my $dHue = AttrVal( $hash->{NAME}, "defaultHue", $hue );
-    my $dSat = AttrVal( $hash->{NAME}, "defaultSat", $sat );
-    my $dVal = AttrVal( $hash->{NAME}, "defaultVal", $val );
-
-    # range/sanity check
-    $hue = LedController_rangeCheck( $dHue, 0, 360 ) ? $dHue : $hue;
-    $sat = LedController_rangeCheck( $dSat, 0, 100 ) ? $dSat : $sat;
-    $val = LedController_rangeCheck( $dVal, 0, 100 ) ? $dVal : $val;
-
-    Log3( $hash, 5, "$hash->{NAME} setting VAL to $val, SAT to $sat and HUE $hue" );
-    Log3( $hash, 5, "$hash->{NAME} args[0] = $args[0], args[1] = $args[1]" );
-
-    LedController_SetHSVColor( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+    LedController_SetHSVColor( $hash, undef, undef, $val, undef, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   elsif ( $cmd eq 'off' ) {
 
@@ -489,7 +431,6 @@ sub LedController_Set(@) {
     }
 
     Log3( $hash, 5, "$hash->{NAME} setting HUE to $hue" );
-    Log3( $hash, 5, "$hash->{NAME} got extended args: t = $fadeTime, q = $doQueue, d=$direction" );
 
     LedController_SetHSVColor( $hash, $hue, undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
@@ -527,7 +468,6 @@ sub LedController_Set(@) {
       Log3( $hash, 2, "$hash->{NAME}: error encoding blink request $@" );
       return undef;
     }
-    Log3( $hash, 3, "$hash->{NAME} BLINK o $param->{data}" );
     LedController_addCall( $hash, $param );
     $forwardToSlaves = 1;
   }
@@ -559,9 +499,8 @@ sub LedController_Set(@) {
       Log3( $hash, 2, "$hash->{NAME}: error encoding config request $@" );
       return undef;
     }
-    Log3( $hash, 3, "post config: " . $param->{data} );
+    
     LedController_addCall( $hash, $param );
-    Log3( $hash, 3, "Get config" );
     LedController_GetConfig($hash);
   }
   elsif ( $cmd eq 'restart' ) {
@@ -675,7 +614,6 @@ sub LedController_Attr(@) {
     }
   }
 
-  # TODO: Add checks for defaultColor, defaultHue/Sat/Val here!
   Log3( $hash, 4, "$hash->{NAME} attrib $attribName $cmd $attribVal" );
   return undef;
 }
@@ -717,13 +655,13 @@ sub LedController_ParseConfig(@) {
 
   my $res;
 
-  Log3( $hash, 3, "$hash->{NAME}: got config response" );
+  Log3( $hash, 4, "$hash->{NAME}: got config response" );
 
   if ($err) {
     Log3( $hash, 2, "$hash->{NAME}: error $err retrieving config" );
   }
   elsif ($data) {
-    Log3( $hash, 3, "$hash->{NAME}: config response data $data" );
+    Log3( $hash, 4, "$hash->{NAME}: config response data $data" );
     eval {
 
       # TODO: Can't we just store the instance of the JSON parser somewhere?
@@ -734,7 +672,6 @@ sub LedController_ParseConfig(@) {
       Log3( $hash, 2, "$hash->{NAME}: error decoding config response $@" );
     }
     else {
-      Log3( $hash, 3, "$hash->{NAME}: executing readings" );
       fhem( "deletereading " . $hash->{NAME} . " config-.*", 1 );
       readingsBeginUpdate($hash);
       LedController_IterateConfigHash( $hash, "config", $res );
@@ -996,7 +933,6 @@ sub LedController_SetHSVColor_Slaves(@) {
 
   my @slaves = split / /, $slaveAttr;
   for my $slaveDev (@slaves) {
-    Log3( $hash, 3, "$hash->{NAME}: Processing slave: $slaveDev" );
     my ( $slaveName, $offsets ) = split /:/, $slaveDev;
 
     if ( defined $offsets ) {
@@ -1033,7 +969,7 @@ sub LedController_EncodeJson($$) {
 
 sub LedController_SetHSVColor(@) {
   my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $name ) = @_;
-  Log3( $hash, 3, "$hash->{NAME}: called SetHSVColor $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name)" );
+  Log3( $hash, 3, "$hash->{NAME}: called SetHSVColor");# $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name)" );
 
   if ( !defined($hue) && !defined($sat) && !defined($val) && !defined($colorTemp) ) {
     Log3( $hash, 3, "$hash->{NAME}: error: All HSVCT components undefined!" );
@@ -1067,7 +1003,7 @@ sub LedController_SetHSVColor(@) {
   }
   else {
 
-    Log3( $hash, 3, "$hash->{NAME}: encoded json data: $data " );
+    Log3( $hash, 5, "$hash->{NAME}: encoded json data: $data " );
 
     my $param = {
       url      => "http://$ip/color",
@@ -1154,7 +1090,6 @@ sub LedController_SetRAWColor(@) {
   }
 
   Log3( $hash, 4, "$hash->{NAME}: set RAW color request r:$red g:$green b:$blue ww:$warmWhite cw:$coldWhite" );
-  Log3( $hash, 3, "$hash->{NAME}: set RAW color request \n$param->{data}" );
   LedController_addCall( $hash, $param );
 }
 
@@ -1250,6 +1185,8 @@ sub LedController_RGB2HSV(@) {
   $green = ( $green * 1023 ) / 255;
   $blue  = ( $blue * 1023 ) / 255;
 
+  Log3( $hash, 3, "LedController_RGB2HSV: $red - $green - $blue" );
+  
   my ( $max, $min, $delta );
   my ( $hue, $sat, $val );
 
@@ -1263,14 +1200,16 @@ sub LedController_RGB2HSV(@) {
   $val = int( ( $max / 10.23 ) + 0.5 );
   $delta = $max - $min;
 
-  my $currentHue = InternalVal( $hash->{NAME}, "hueValue", 0 ) + 0;
-  return ( $currentHue, 0, $val ) if ( ( $max == 0 ) || ( $delta == 0 ) );
-
   $sat = int( ( ( $delta / $max ) * 100 ) + 0.5 );
-  $hue = ( $green - $blue ) / $delta if ( $red == $max );
-  $hue = 2 + ( $blue - $red ) / $delta  if ( $green == $max );
-  $hue = 4 + ( $red - $green ) / $delta if ( $blue == $max );
-  $hue = int( ( $hue * 60 ) + 0.5 );
+  if ($delta > 0.0) {
+    $hue = ( $green - $blue ) / $delta if ( $red == $max );
+    $hue = 2 + ( $blue - $red ) / $delta  if ( $green == $max );
+    $hue = 4 + ( $red - $green ) / $delta if ( $blue == $max );
+    $hue = int( ( $hue * 60 ) + 0.5 );
+  }
+  else {
+    $hue = 0.0;
+  }
   $hue += 360 if ( $hue < 0 );
   return $hue, $sat, $val;
 }
@@ -1332,7 +1271,7 @@ sub LedController_ArgsHelper(@) {
     elsif ( LedController_isNumeric($arg) ) {
       $time = $arg * 1000;
     }
-    elsif ( substr( $arg, 0, 1 ) == "s" && LedController_isNumeric( substr( $arg, 1 ) ) ) {
+    elsif ( substr( $arg, 0, 1 ) eq "s" && LedController_isNumeric( substr( $arg, 1 ) ) ) {
       $speed = substr( $arg, 1 );
     }
     else {
@@ -1357,7 +1296,7 @@ sub LedController_ArgsHelper(@) {
       $transitionType = 'solid' if ( $flags =~ m/s/i );
     }
   }
-  Log3( $hash, 5, "LedController_ArgsHelper: Time: $time | Speed: $speed | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
+  #Log3( $hash, 5, "LedController_ArgsHelper: Time: $time | Speed: $speed | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
   return ( undef, $time, $speed, $queue, $d, $requeue, $name, $transitionType, $channels );
 }
 

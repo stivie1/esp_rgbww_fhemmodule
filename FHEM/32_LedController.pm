@@ -1200,7 +1200,7 @@ sub LedController_RGB2HSV(@) {
   $val = int( ( $max / 10.23 ) + 0.5 );
   $delta = $max - $min;
 
-  $sat = if ($max > 0.0) ? int( ( ( $delta / $max ) * 100 ) + 0.5 ) : 0;
+  $sat = ($max > 0.0) ? int( ( ( $delta / $max ) * 100 ) + 0.5 ) : 0;
     
   if ($delta > 0.0) {
     $hue = ( $green - $blue ) / $delta if ( $red == $max );

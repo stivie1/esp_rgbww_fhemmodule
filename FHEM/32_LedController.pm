@@ -170,7 +170,7 @@ sub LedController_Read($) {
 
   #processes all complete messages
   while ($msg) {
-    Log3( $name, 5, "LedController_ProcessRead: Decoding JSON message. Length: " . length($msg) . " Content: " . $msg );
+    Log3( $name, 3, "LedController_ProcessRead: Decoding JSON message. Length: " . length($msg) . " Content: " . $msg );
     my $obj = JSON->new->utf8(0)->decode($msg);
 
     if ( $obj->{method} eq "color_event" ) {
@@ -200,6 +200,7 @@ sub LedController_Read($) {
     ( $msg, $tail ) = LedController_ParseMsg( $hash, $tail );
   }
   $hash->{PARTIAL} = $tail;
+  
   Log3( $name, 5, "LedController_ProcessRead: Tail: " . $tail );
   Log3( $name, 5, "LedController_ProcessRead: PARTIAL: " . $hash->{PARTIAL} );
   return;

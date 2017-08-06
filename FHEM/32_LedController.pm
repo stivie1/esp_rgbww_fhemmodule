@@ -173,11 +173,14 @@ sub LedController_Read($) {
     Log3( $name, 5, "LedController_ProcessRead: Decoding JSON message. Length: " . length($msg) . " Content: " . $msg );
     my $obj = JSON->new->utf8(0)->decode($msg);
 
-    if ( $obj->{method} eq "hsv_event" ) {
-      LedController_UpdateReadingsHsv( $hash, $obj->{params}{h}, $obj->{params}{s}, $obj->{params}{v}, $obj->{params}{ct} );
-    }
-    elsif ( $obj->{method} eq "raw_event" ) {
-      LedController_UpdateReadingsRaw( $hash, $obj->{params}{r}, $obj->{params}{g}, $obj->{params}{b}, $obj->{params}{cw}, $obj->{params}{ww} );
+    if ( $obj->{method} eq "color_event" ) {
+      my $colorMode = "raw";
+      if ( exists $obj->{params}->{hsv} ) {
+        $colorMode = "hsv";
+        LedController_UpdateReadingsHsv( $hash, $obj->{params}{hsv}{h}, $obj->{params}{hsv}{s}, $obj->{params}{hsv}{v}, $obj->{params}{hsv}{ct} );
+      }
+      LedController_UpdateReadingsRaw( $hash, $obj->{params}{raw}{r}, $obj->{params}{raw}{g}, $obj->{params}{raw}{b}, $obj->{params}{raw}{cw}, $obj->{params}{raw}{ww} );
+      readingsSingleUpdate( $hash, 'colorMode', $colorMode, 1 );
     }
     elsif ( $obj->{method} eq "transition_finished" ) {
       readingsSingleUpdate( $hash, "tranisitionFinished", $obj->{params}{name}, 1 );
@@ -524,7 +527,7 @@ sub LedController_Set(@) {
     LedController_FwUpdate_GetVersion( $hash, $url, $force );
   }
   else {
-    my $cmdList = "hsv rgb:colorpicker,RGB state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update";
+    my $cmdList = "hsv rgb:colorpicker,RGB state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update ct";
     return SetExtensions( $hash, $cmdList, $name, $cmd, @args );
   }
 
@@ -969,7 +972,7 @@ sub LedController_EncodeJson($$) {
 
 sub LedController_SetHSVColor(@) {
   my ( $hash, $hue, $sat, $val, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $name ) = @_;
-  Log3( $hash, 3, "$hash->{NAME}: called SetHSVColor");# $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name)" );
+  Log3( $hash, 5, "$hash->{NAME}: called SetHSVColor");# $hue, $sat, $val, $colorTemp, $fadeTime, $transitionType, $doQueue, $direction, $doRequeue, $name)" );
 
   if ( !defined($hue) && !defined($sat) && !defined($val) && !defined($colorTemp) ) {
     Log3( $hash, 3, "$hash->{NAME}: error: All HSVCT components undefined!" );
@@ -1029,20 +1032,29 @@ sub LedController_SetHSVColor(@) {
 
 sub LedController_UpdateReadingsHsv(@) {
   my ( $hash, $hue, $sat, $val, $colorTemp ) = @_;
-  my ( $red, $green, $blue ) = LedController_HSV2RGB( $hue, $sat, $val );
-  my $xrgb = sprintf( "%02x%02x%02x", $red, $green, $blue );
-  Log3( $hash, 5, "$hash->{NAME}: calculated RGB as $xrgb" );
-  Log3( $hash, 5, "$hash->{NAME}: begin Readings Update\n   hue: $hue\n   sat: $sat\n   val:$val\n   ct : $colorTemp\n   HSV: $hue,$sat,$val\n   RGB: $xrgb" );
-
+  
+  my $h = defined $hue ? $hue : "-";
+  my $s = defined $sat ? $sat : "-";
+  my $v = defined $val ? $val : "-";
+  my $ct = defined $colorTemp ? $colorTemp : "-";
+  my $stateLight = ( $v > 0 ) ? 'on' : 'off';
+  
+  my $xrgb = "-";
+  if (defined $hue && defined $sat && defined $val) {
+    my ( $red, $green, $blue ) = LedController_HSV2RGB( $hue, $sat, $val );
+    $xrgb = sprintf( "%02x%02x%02x", $red, $green, $blue );
+  }
+    
+  my $hsv = "$h,$s,$v";
+  
   readingsBeginUpdate($hash);
-  readingsBulkUpdate( $hash, 'hue', $hue )       if defined $hue;
-  readingsBulkUpdate( $hash, 'sat', $sat )       if defined $sat;
-  readingsBulkUpdate( $hash, 'val', $val )       if defined $val;
-  readingsBulkUpdate( $hash, 'ct',  $colorTemp ) if defined $colorTemp;
-  readingsBulkUpdate( $hash, 'hsv', "$hue,$sat,$val" );
-  readingsBulkUpdate( $hash, 'rgb', $xrgb );
-  readingsBulkUpdate( $hash, 'stateLight', ( $val == 0 ) ? 'off' : 'on' );
-  readingsBulkUpdate( $hash, 'colorMode', "hsv" );
+  readingsBulkUpdate( $hash, 'hue', $h );
+  readingsBulkUpdate( $hash, 'sat', $s );
+  readingsBulkUpdate( $hash, 'val', $v );
+  readingsBulkUpdate( $hash, 'ct',  $ct );
+  readingsBulkUpdate( $hash, 'hsv', $hsv );
+  readingsBulkUpdate( $hash, 'stateLight', $stateLight );
+  readingsBulkUpdate( $hash, 'rgb', $xrgb );  
   readingsEndUpdate( $hash, 1 );
   return undef;
 }
@@ -1056,7 +1068,6 @@ sub LedController_UpdateReadingsRaw(@) {
   readingsBulkUpdate( $hash, 'raw_blue',  $b );
   readingsBulkUpdate( $hash, 'raw_cw',    $cw );
   readingsBulkUpdate( $hash, 'raw_ww',    $ww );
-  readingsBulkUpdate( $hash, 'colorMode', "raw" );
   readingsEndUpdate( $hash, 1 );
   return undef;
 }

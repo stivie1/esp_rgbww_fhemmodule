@@ -82,10 +82,9 @@ sub LedController_Init(@) {
 
 sub LedController_Connect($$) {
   my ( $hash, $err ) = @_;
-  my $name = $hash->{NAME};
 
   if ($err) {
-    Log3 $name, 4, "LedController ($name) - unable to connect to LedController: $err";
+    Log3 $hash, 4, "$hash->{NAME}: unable to connect to LedController: $err";
   }
 }
 
@@ -121,11 +120,11 @@ sub LedController_CheckConnection($) {
 
   # the controller should send keep alive every 60 seconds
   if ( $lastRecvDiff > 70 ) {
-    Log3 $name, 3, "LedController_CheckConnection: Connection lost! Last data received $lastRecvDiff s ago";
+    Log3 $name, 3, "$hash->{NAME}: LedController_CheckConnection: Connection lost! Last data received $lastRecvDiff s ago";
     DevIo_Disconnected($hash);
     return 0;
   }
-  Log3 $name, 4, "LedController_CheckConnection: Connection still alive. Last data received $lastRecvDiff s ago";
+  Log3 $name, 4, "$hash->{NAME}: LedController_CheckConnection: Connection still alive. Last data received $lastRecvDiff s ago";
 
   return 1;
 }
@@ -150,29 +149,34 @@ sub LedController_Read($) {
   return if ( not defined($data) );
 
   my $buffer = '';
-  Log3( $name, 5, "LedController_ProcessRead" );
+  Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead" );
 
   #include previous partial message
   if ( defined( $hash->{PARTIAL} ) && $hash->{PARTIAL} ) {
-    Log3( $name, 5, "LedController_ProcessRead: PARTIAL: " . $hash->{PARTIAL} );
+    Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: PARTIAL: " . $hash->{PARTIAL} );
     $buffer = $hash->{PARTIAL};
   }
   else {
-    Log3( $name, 5, "No PARTIAL buffer" );
+    Log3( $name, 5, "$hash->{NAME}: No PARTIAL buffer" );
   }
 
-  Log3( $name, 5, "LedController_ProcessRead: Incoming data: " . $data );
+  Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: Incoming data: " . $data );
 
   $buffer = $buffer . $data;
-  Log3( $name, 5, "LedController_ProcessRead: Current processing buffer (PARTIAL + incoming data): " . $buffer );
+  Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: Current processing buffer (PARTIAL + incoming data): " . $buffer );
 
   my ( $msg, $tail ) = LedController_ParseMsg( $hash, $buffer );
 
   #processes all complete messages
   while ($msg) {
-    Log3( $name, 5, "LedController_ProcessRead: Decoding JSON message. Length: " . length($msg) . " Content: " . $msg );
-    my $obj = JSON->new->utf8(0)->decode($msg);
-
+    Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: Decoding JSON message. Length: " . length($msg) . " Content: " . $msg );
+    my $obj;
+    eval { $obj = JSON->new->utf8(0)->decode($msg); };
+    if ($@) {
+      Log3( $hash, 2, "$hash->{NAME}: LedController_Read: Error parsing msg: $msg" );
+      next;
+    }
+    
     if ( $obj->{method} eq "color_event" ) {
       my $colorMode = "raw";
       if ( exists $obj->{params}->{hsv} ) {
@@ -183,7 +187,8 @@ sub LedController_Read($) {
       readingsSingleUpdate( $hash, 'colorMode', $colorMode, 1 );
     }
     elsif ( $obj->{method} eq "transition_finished" ) {
-      readingsSingleUpdate( $hash, "tranisitionFinished", $obj->{params}{name}, 1 );
+      my $msg = $obj->{params}{name} . "," . ($obj->{params}{requeued} ? "requeued" : "finished");
+      readingsSingleUpdate( $hash, "tranisitionFinished", $msg, 1 );
     }
     elsif ( $obj->{method} eq "keep_alive" ) {
       $hash->{LAST_RECV} = $now;
@@ -195,14 +200,14 @@ sub LedController_Read($) {
       readingsEndUpdate( $hash, 1 );
     }
     else {
-      Log3( $name, 3, "LedController_ProcessRead: Unknown message type: " . $obj->{method} );
+      Log3( $name, 3, "$hash->{NAME}: LedController_ProcessRead: Unknown message type: " . $obj->{method} );
     }
     ( $msg, $tail ) = LedController_ParseMsg( $hash, $tail );
   }
   $hash->{PARTIAL} = $tail;
   
-  Log3( $name, 5, "LedController_ProcessRead: Tail: " . $tail );
-  Log3( $name, 5, "LedController_ProcessRead: PARTIAL: " . $hash->{PARTIAL} );
+  Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: Tail: " . $tail );
+  Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: PARTIAL: " . $hash->{PARTIAL} );
   return;
 }
 
@@ -222,7 +227,7 @@ sub LedController_ParseMsg($$) {
         $tail .= $c;
       }
       elsif ( ( $open == $close ) && ( $c ne '{' ) ) {
-        Log3( $name, 3, "LedController_ParseMsg: Garbage character before message: " . $c );
+        Log3( $name, 3, "$hash->{NAME}: LedController_ParseMsg: Garbage character before message: " . $c );
       }
       else {
         if ( $c eq '{' ) {
@@ -1022,7 +1027,7 @@ sub LedController_SetHSVColor(@) {
       loglevel => 5
     };
 
-    Log3( $hash, 5, "$hash->{NAME}: set HSV color request \n$param" );
+    Log3( $hash, 5, "$hash->{NAME}: set HSV color request: $data" );
     LedController_addCall( $hash, $param );
   }
 
@@ -1197,7 +1202,7 @@ sub LedController_RGB2HSV(@) {
   $green = ( $green * 1023 ) / 255;
   $blue  = ( $blue * 1023 ) / 255;
 
-  Log3( $hash, 3, "LedController_RGB2HSV: $red - $green - $blue" );
+  Log3( $hash, 3, "$hash->{NAME}: LedController_RGB2HSV: $red - $green - $blue" );
   
   my ( $max, $min, $delta );
   my ( $hue, $sat, $val );
@@ -1309,7 +1314,7 @@ sub LedController_ArgsHelper(@) {
       $transitionType = 'solid' if ( $flags =~ m/s/i );
     }
   }
-  #Log3( $hash, 5, "LedController_ArgsHelper: Time: $time | Speed: $speed | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
+  #Log3( $hash, 5, "$hash->{NAME}: LedController_ArgsHelper: Time: $time | Speed: $speed | Q: $queue | RQ: $requeue | Name: $name | trans: $transitionType | Ch: $channels" );
   return ( undef, $time, $speed, $queue, $d, $requeue, $name, $transitionType, $channels );
 }
 

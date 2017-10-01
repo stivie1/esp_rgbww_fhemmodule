@@ -204,7 +204,6 @@ sub LedController_Read($) {
     else {
       Log3( $name, 3, "$hash->{NAME}: LedController_ProcessRead: Unknown message type: " . $obj->{method} );
     }
-    ( $msg, $tail ) = LedController_ParseMsg( $hash, $tail );
   }
   $hash->{PARTIAL} = $tail;
   
@@ -215,7 +214,7 @@ sub LedController_Read($) {
 
 #Parses a given string and returns ($msg,$tail). If the string contains a complete message
 #(equal number of curly brackets) the return value $msg will contain this message. The
-#remaining string is return in form of the $tail variable.
+#remaining string is returned in form of the $tail variable.
 sub LedController_ParseMsg($$) {
   my ( $hash, $buffer ) = @_;
   my $name  = $hash->{NAME};
@@ -1116,7 +1115,7 @@ sub LedController_ParseBoolResult(@) {
   my ( $hash, $err, $data ) = @_;
   my $res;
 
-  Log3( $hash, 4, "$hash->{NAME}: LedController_ParseBoolResult" );
+  Log3( $hash, 5, "$hash->{NAME}: LedController_ParseBoolResult" );
   if ($err) {
     Log3( $hash, 2, "$hash->{NAME}: LedController_ParseBoolResult error: $err" );
   }
@@ -1126,10 +1125,10 @@ sub LedController_ParseBoolResult(@) {
       Log3( $hash, 3, "$hash->{NAME}: error LedController_ParseBoolResult: $data" );
     }
     elsif ( exists $res->{success} ) {
-      Log3( $hash, 4, "$hash->{NAME}: LedController_ParseBoolResult success" );
+      Log3( $hash, 5, "$hash->{NAME}: LedController_ParseBoolResult success" );
     }
     else {
-      Log3( $hash, 3, "$hash->{NAME}: LedController_ParseBoolResult malformed answer" );
+      Log3( $hash, 2, "$hash->{NAME}: LedController_ParseBoolResult malformed answer" );
     }
   }
 

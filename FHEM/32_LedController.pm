@@ -162,13 +162,15 @@ sub LedController_Read($) {
 
   Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: Incoming data: " . $data );
 
-  $buffer = $buffer . $data;
-  Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: Current processing buffer (PARTIAL + incoming data): " . $buffer );
-
-  my ( $msg, $tail ) = LedController_ParseMsg( $hash, $buffer );
+  my $tail = $buffer . $data;
+  Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: Current processing buffer (PARTIAL + incoming data): " . $tail );
 
   #processes all complete messages
-  while ($msg) {
+  while (1) {
+    my $msg;
+    ( $msg, $tail ) = LedController_ParseMsg( $hash, $tail );
+    last if !$msg;
+    
     Log3( $name, 5, "$hash->{NAME}: LedController_ProcessRead: Decoding JSON message. Length: " . length($msg) . " Content: " . $msg );
     my $obj;
     eval { $obj = JSON->new->utf8(0)->decode($msg); };

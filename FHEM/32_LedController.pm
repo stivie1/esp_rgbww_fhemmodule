@@ -65,7 +65,9 @@ sub LedController_Define($$) {
   DevIo_OpenDev( $hash, 0, "LedController_Init", "LedController_Connect" );
 }
 
-sub LedController_Undef(@) {
+sub LedController_Undef($$) {
+  my ( $hash, $name) = @_;
+  LedController_RemoveTimerCheck($hash);
   return undef;
 }
 
@@ -88,12 +90,19 @@ sub LedController_Connect($$) {
   }
 }
 
+sub LedController_RemoveTimerCheck($) {
+  my ( $hash ) = @_;
+  RemoveInternalTimer( $hash, "LedController_Check" );
+}
+
 sub LedController_QueueIntervalUpdate($;$) {
   my ( $hash, $time ) = @_;
 
   # remove old timer (we might just want to reset it)
-  RemoveInternalTimer( $hash, "LedController_Check" );
-  InternalTimer( time() + 10, "LedController_Check", $hash, 0 );
+  LedController_RemoveTimerCheck($hash);
+  
+  # check every 10 seconds
+  InternalTimer( time() + 10, "LedController_Check", $hash );
 }
 
 sub LedController_Check($) {
@@ -119,7 +128,7 @@ sub LedController_CheckConnection($) {
   my $lastRecvDiff = ( time() - $hash->{LAST_RECV} );
 
   # the controller should send keep alive every 60 seconds
-  if ( $lastRecvDiff > 70 ) {
+  if ( $lastRecvDiff > 80 ) {
     Log3 $name, 3, "$hash->{NAME}: LedController_CheckConnection: Connection lost! Last data received $lastRecvDiff s ago";
     DevIo_Disconnected($hash);
     return 0;
@@ -193,6 +202,7 @@ sub LedController_Read($) {
       readingsSingleUpdate( $hash, "tranisitionFinished", $msg, 1 );
     }
     elsif ( $obj->{method} eq "keep_alive" ) {
+      Log3( $hash, 4, "$hash->{NAME}: LedController_Read: keep_alive received" );
       $hash->{LAST_RECV} = $now;
     }
     elsif ( $obj->{method} eq "clock_slave_status" ) {
@@ -308,17 +318,17 @@ sub LedController_Set(@) {
       return $msg;
     }
     if (defined $hue && !LedController_rangeCheck( $hue, 0, 360 ) ) {
-      my $msg = "$hash->{NAME} HUE must be a number from 0-360";
+      my $msg = "$hash->{NAME} HUE must be a number from 0-360 or a relative value (+/-)";
       Log3( $hash, 3, $msg );
       return $msg;
     }
     if (defined $sat && !LedController_rangeCheck( $sat, 0, 100 ) ) {
-      my $msg = "$hash->{NAME} SAT must be a number from 0-100";
+      my $msg = "$hash->{NAME} SAT must be a number from 0-100 or a relative value (+/-)";
       Log3( $hash, 3, $msg );
       return $msg;
     }
     if (defined $val && !LedController_rangeCheck( $val, 0, 100 ) ) {
-      my $msg = "$hash->{NAME} VAL must be a number from 0-100";
+      my $msg = "$hash->{NAME} VAL must be a number from 0-100 or a relative value (+/-)";
       Log3( $hash, 3, $msg );
       return $msg;
     }
@@ -347,9 +357,10 @@ sub LedController_Set(@) {
   }
   elsif ( $cmd eq 'ct' ) {
     my $colorTemp = $args[0];
-    if( !LedController_rangeCheck( $colorTemp, 2000, 10000) ){
-      Log3 ($hash, 3, "$hash->{NAME} colorTemp must be a number from 2000-10000");
-      return "$hash->{NAME} colorTemp must be a number from 2000-10000";
+    if( !LedController_rangeCheck( $colorTemp, 2000, 10000, 0) ){
+      my $msg = "$hash->{NAME} colorTemp must be a number from 2000-10000";
+      Log3 ($hash, 3, $msg);
+      return $msg;
     }
 
     LedController_SetHSVColor( $hash, undef, undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
@@ -408,8 +419,9 @@ sub LedController_Set(@) {
 
     # input validation
     if ( !LedController_rangeCheck( $val, 0, 100 ) ) {
-      Log3( $hash, 3, "$hash->{NAME} value must be a number from 0-100" );
-      return "$hash->{NAME} value must be a number from 0-100";
+      my $msg = "$hash->{NAME} value must be a number from 0-100 or a relative value (+/-)";
+      Log3( $hash, 3, $msg );
+      return $msg;
     }
 
     Log3( $hash, 5, "$hash->{NAME} setting VAL to $val" );
@@ -422,8 +434,9 @@ sub LedController_Set(@) {
 
     # input validation
     if ( !LedController_rangeCheck( $sat, 0, 100 ) ) {
-      Log3( $hash, 3, "$hash->{NAME} sat value must be a number from 0-100" );
-      return "$hash->{NAME} sat value must be a number from 0-100";
+      my $msg = "$hash->{NAME} sat value must be a number from 0-100 or a relative value (+/-)";
+      Log3( $hash, 3, $msg );
+      return $msg;
     }
 
     Log3( $hash, 5, "$hash->{NAME} setting SAT to $sat" );
@@ -436,8 +449,9 @@ sub LedController_Set(@) {
 
     # input validation
     if ( !LedController_rangeCheck( $hue, 0, 360 ) ) {
-      Log3( $hash, 3, "$hash->{NAME} hue value must be a number from 0-360" );
-      return "$hash->{NAME} hue value must be a number from 0-360";
+      my $msg = "$hash->{NAME} hue value must be a number from 0-360 or a relative value (+/-)";
+      Log3( $hash, 3, $msg );
+      return $msg;
     }
 
     Log3( $hash, 5, "$hash->{NAME} setting HUE to $hue" );
@@ -533,8 +547,14 @@ sub LedController_Set(@) {
 
     LedController_FwUpdate_GetVersion( $hash, $url, $force );
   }
+  elsif ( $cmd eq 'rotate' ) {
+
+    my $rot = $args[0];
+    Log3( $hash, 2, "$hash->{NAME}: Command 'rotate' is deprecated! Please use 'hue' or 'hsv' wit relative values (+/-xxx)!" );
+    LedController_SetHSVColor( $hash, "+$rot", undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+  }
   else {
-    my $cmdList = "hsv rgb:colorpicker,RGB state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update ct";
+    my $cmdList = "hsv rgb:colorpicker,RGB state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update ct rotate";
     return SetExtensions( $hash, $cmdList, $name, $cmd, @args );
   }
 
@@ -1320,11 +1340,18 @@ sub LedController_ArgsHelper(@) {
 }
 
 sub LedController_isNumeric {
-  defined $_[0] && $_[0] =~ /^[+-]?\d+.?\d*/;
+  defined $_[0] && $_[0] =~ /^\d+.?\d*/;
+}
+
+sub LedController_isNumericRelative {
+  defined $_[0] && $_[0] =~ /^[+-]\d+.?\d*/;
 }
 
 sub LedController_rangeCheck(@) {
-  my ( $val, $min, $max ) = @_;
+  my ( $val, $min, $max, $canBeRelative ) = @_;
+  
+  $canBeRelative = 1 if !defined($canBeRelative);
+  return 1 if LedController_isNumericRelative($val) and $canBeRelative;
   return LedController_isNumeric($val) && $val >= $min && $val <= $max;
 }
 

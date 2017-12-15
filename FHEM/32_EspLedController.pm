@@ -838,6 +838,7 @@ sub EspLedController_ParseFwUpdateProgress(@) {
   my $res;
   if ($err) {
     Log3( $hash, 2, "$hash->{NAME}: EspLedController_ParseFwUpdateProgress error: $err" );
+    EspLedController_QueueFwUpdateProgressCheck($hash);
     readingsSingleUpdate( $hash, "lastFwUpdate", "ParseFwUpdateProgress error: $err", 1 );
   }
   elsif ($data) {
@@ -853,6 +854,7 @@ sub EspLedController_ParseFwUpdateProgress(@) {
     Log3( $hash, 3, "$hash->{NAME}: EspLedController_ParseFwUpdateProgress. status: $status" );
 
     if ( $status == 0 ) {
+      # NOT UPDATING
       readingsSingleUpdate( $hash, "lastFwUpdate", "Not updating", 1 );
     }
     elsif ( $status == 1 ) {

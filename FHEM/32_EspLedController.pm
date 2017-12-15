@@ -760,7 +760,7 @@ sub EspLedController_FwUpdate_GetVersion(@) {
     timeout  => 30,
     hash     => $hash,
     method   => "GET",
-    header   => "User-Agent: fhem\r\nAccept: application/json",
+    header   => "User-Agent: fhem\r\nAccept: application/json\r\nContent-Type: application/json",
     callback => \&EspLedController_ParseFwVersionResult,
     forceFw  => $force
   };
@@ -852,17 +852,19 @@ sub EspLedController_ParseFwUpdateProgress(@) {
     my $status = $res->{status};
     Log3( $hash, 3, "$hash->{NAME}: EspLedController_ParseFwUpdateProgress. status: $status" );
 
-    if ( $status == 2 ) {
+    if ( $status == 0 ) {
+      readingsSingleUpdate( $hash, "lastFwUpdate", "Not updating", 1 );
+    }
+    elsif ( $status == 1 ) {
+      # OTA_PROCESSING
+      EspLedController_QueueFwUpdateProgressCheck($hash);
+      readingsSingleUpdate( $hash, "lastFwUpdate", "Update in progress", 1 );
+    }
+    elsif ( $status == 2 ) {
       my $msg = "Update successful - Restarting device...";
       readingsSingleUpdate( $hash, "lastFwUpdate", $msg, 1 );
       Log3( $hash, 3, "$hash->{NAME}: EspLedController_ParseFwUpdateProgress - $msg" );
       EspLedController_SendSystemCommand( $hash, "restart" );
-    }
-    elsif ( $status == 1 ) {
-
-      # OTA_PROCESSING
-      EspLedController_QueueFwUpdateProgressCheck($hash);
-      readingsSingleUpdate( $hash, "lastFwUpdate", "Update in progress", 1 );
     }
     elsif ( $status == 4 ) {
 
@@ -888,7 +890,7 @@ sub EspLedController_GetHttpParams(@) {
     timeout  => 30,
     hash     => $hash,
     method   => $method,
-    header   => "User-Agent: fhem\r\nAccept: application/json",
+    header   => "User-Agent: fhem\r\nAccept: application/json\r\nContent-Type: application/json",
     callback => \&EspLedController_callback
   };
   return $param;
@@ -1042,7 +1044,7 @@ sub EspLedController_SetHSVColor(@) {
       timeout  => 30,
       hash     => $hash,
       method   => "POST",
-      header   => "User-Agent: fhem\r\nAccept: application/json",
+      header   => "User-Agent: fhem\r\nAccept: application/json\r\nContent-Type: application/json",
       parser   => \&EspLedController_ParseBoolResult,
       callback => \&EspLedController_callback,
       loglevel => 5

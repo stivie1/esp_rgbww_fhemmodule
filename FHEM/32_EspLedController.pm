@@ -741,6 +741,9 @@ sub EspLedController_ParseInfo(@) {
       readingsBulkUpdate( $hash, 'info-deviceid', $res->{deviceid} );
       readingsBulkUpdate( $hash, 'info-firmware', $res->{firmware} );
       readingsBulkUpdate( $hash, 'info-mac',      $res->{connection}->{mac} );
+      readingsBulkUpdate( $hash, 'info-event_num_clients', $res->{event_num_clients} );
+      readingsBulkUpdate( $hash, 'info-sming_version', $res->{sming} );
+      readingsBulkUpdate( $hash, 'info-current_rom_slot', $res->{current_rom} );
       readingsEndUpdate( $hash, 1 );
     }
   }

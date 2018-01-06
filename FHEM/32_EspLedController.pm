@@ -744,6 +744,7 @@ sub EspLedController_ParseInfo(@) {
       readingsBulkUpdate( $hash, 'info-event_num_clients', $res->{event_num_clients} );
       readingsBulkUpdate( $hash, 'info-sming_version', $res->{sming} );
       readingsBulkUpdate( $hash, 'info-current_rom_slot', $res->{current_rom} );
+      readingsBulkUpdate( $hash, 'info-uptime', $res->{uptime} );
       readingsEndUpdate( $hash, 1 );
     }
   }

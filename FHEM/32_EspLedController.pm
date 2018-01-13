@@ -739,12 +739,19 @@ sub EspLedController_ParseInfo(@) {
       fhem( "deletereading " . $hash->{NAME} . " info-.*", 1 );
       readingsBeginUpdate($hash);
       readingsBulkUpdate( $hash, 'info-deviceid', $res->{deviceid} );
-      readingsBulkUpdate( $hash, 'info-firmware', $res->{firmware} );
-      readingsBulkUpdate( $hash, 'info-mac',      $res->{connection}->{mac} );
+      readingsBulkUpdate( $hash, 'info-firmware', $res->{git_version} );
       readingsBulkUpdate( $hash, 'info-event_num_clients', $res->{event_num_clients} );
       readingsBulkUpdate( $hash, 'info-sming_version', $res->{sming} );
       readingsBulkUpdate( $hash, 'info-current_rom_slot', $res->{current_rom} );
       readingsBulkUpdate( $hash, 'info-uptime', $res->{uptime} );
+
+      readingsBulkUpdate( $hash, 'info-connection-ssid',       $res->{connection}->{ssid} );
+      readingsBulkUpdate( $hash, 'info-connection-dhcp',       $res->{connection}->{dhcp} );
+      readingsBulkUpdate( $hash, 'info-connection-ip_address', $res->{connection}->{ip} );
+      readingsBulkUpdate( $hash, 'info-connection-netmask',    $res->{connection}->{netmask} );
+      readingsBulkUpdate( $hash, 'info-connection-gateway',    $res->{connection}->{gateway} );
+      readingsBulkUpdate( $hash, 'info-connection-mac',        $res->{connection}->{mac} );
+      
       readingsEndUpdate( $hash, 1 );
     }
   }

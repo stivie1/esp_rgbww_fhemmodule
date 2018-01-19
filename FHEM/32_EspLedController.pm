@@ -60,6 +60,7 @@ sub EspLedController_Define($$) {
   EspLedController_GetInfo($hash);
   EspLedController_GetConfig($hash);
   $hash->{helper}->{oldVal} = 100;
+  $hash->{helper}->{lastCall} = undef;
   $hash->{DeviceName} = "$hash->{IP}:$hash->{PORT}";
 
   DevIo_OpenDev( $hash, 0, "EspLedController_Init", "EspLedController_Connect" );
@@ -1204,7 +1205,7 @@ sub EspLedController_doCall(@) {
   $hash->{helper}->{isBusy} = 1;
   my $param = shift @{ $hash->{helper}->{cmdQueue} };
 
-  #Log3( $hash, 3, "$hash->{NAME} send API Call " . Dumper($param->{cmd}) );
+  $hash->{helper}->{lastCall} = $param;
   HttpUtils_NonblockingGet($param);
 
   return undef;
@@ -1214,16 +1215,20 @@ sub EspLedController_callback(@) {
   my ( $param, $err, $data ) = @_;
   my ($hash) = $param->{hash};
 
-  # TODO generic error handling
-
+  if (!$err && $param->{code} != 200 && $param->{httpheader} =~ m/Retry-After: (\d)/) {
+    # TODO: Retry-After with timestamp not supported
+    Log3( $hash, 3, "$hash->{NAME}: Server replied with HTTP Retry-After: $1");
+    InternalTimer( time() + $1, "HttpUtils_NonblockingGet", $hash->{helper}->{lastCall} );
+    return undef;
+  }
+  
   $hash->{helper}->{isBusy} = 0;
 
   # do the result-parser callback
   my $parser = $param->{parser};
   &$parser( $hash, $err, $data );
 
-  # more calls ?
-  EspLedController_doCall($hash) if scalar @{ $hash->{helper}->{cmdQueue} };
+  EspLedController_doCall($hash);
 
   return undef;
 }

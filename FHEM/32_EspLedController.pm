@@ -399,21 +399,21 @@ sub EspLedController_Set(@) {
       return EspLedController_Set( $hash, $name, "on", @args );
     }
   }
-  elsif ( $cmd eq "dimup" ) {
+  elsif ( $cmd eq "dimup" || $cmd eq "up" ) {
 
     # dimming value is first parameter, add to $val and keep hue and sat the way they were.
     my $dim = $args[0];
     EspLedController_SetHSVColor( $hash, undef, undef, "+" . $dim, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue,
       $fadeName );
   }
-  elsif ( $cmd eq "dimdown" ) {
+  elsif ( $cmd eq "dimdown" || $cmd eq "down" ) {
 
     # dimming value is first parameter, add to $val and keep hue and sat the way they were.
     my $dim = $args[0];
     EspLedController_SetHSVColor( $hash, undef, undef, "-" . $dim, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue,
       $fadeName );
   }
-  elsif ( $cmd eq 'val' || $cmd eq 'dim' ) {
+  elsif ( $cmd eq 'val' || $cmd eq 'dim' || $cmd eq 'pct' ) {
 
     # Set val from arguments, keep hue and sat the way they were
     my $val = $args[0];
@@ -1096,6 +1096,7 @@ sub EspLedController_UpdateReadingsHsv(@) {
   readingsBulkUpdate( $hash, 'hue', $h );
   readingsBulkUpdate( $hash, 'sat', $s );
   readingsBulkUpdate( $hash, 'val', $v );
+  readingsBulkUpdate( $hash, 'pct', $v );
   readingsBulkUpdate( $hash, 'ct',  $ct );
   readingsBulkUpdate( $hash, 'hsv', $hsv );
   readingsBulkUpdate( $hash, 'stateLight', $stateLight );

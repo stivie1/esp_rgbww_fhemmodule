@@ -48,6 +48,8 @@ sub EspLedController_Define($$) {
 
   return "wrong syntax: define <name> LedController <ip> [<port>]" if ( @a != 3 && @a != 4 );
 
+  EspLedController_Cleanup($hash);
+
   my $name = $a[0];
   $hash->{IP} = $a[2];
   $hash->{PORT} = defined( $a[3] ) ? $a[3] : 9090;
@@ -63,12 +65,13 @@ sub EspLedController_Define($$) {
   $hash->{helper}->{lastCall} = undef;
   $hash->{DeviceName} = "$hash->{IP}:$hash->{PORT}";
 
-  DevIo_OpenDev( $hash, 0, "EspLedController_Init", "EspLedController_Connect" );
+  return DevIo_OpenDev( $hash, 0, "EspLedController_Init", "EspLedController_Connect" );
 }
 
 sub EspLedController_Undef($$) {
   my ( $hash, $name) = @_;
-  EspLedController_RemoveTimerCheck($hash);
+
+  EspLedController_Cleanup($hash);
   return undef;
 }
 
@@ -594,6 +597,12 @@ sub EspLedController_ForwardToSlaves(@) {
     Log3( $hash, 3, "$hash->{NAME} EspLedController_ForwardToSlaves: $slaveCmd" );
     fhem($slaveCmd);
   }
+}
+
+sub EspLedController_Cleanup(@) {
+  my ($hash) = @_;
+  EspLedController_RemoveTimerCheck($hash);
+  DevIo_CloseDev($hash);
 }
 
 sub EspLedController_GetConfig(@) {

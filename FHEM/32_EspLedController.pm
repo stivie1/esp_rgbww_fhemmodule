@@ -287,7 +287,7 @@ sub EspLedController_Set(@) {
   my ( $hash, $name, $cmd, @args ) = @_;
   my $forwardToSlaves = 0;
 
-  #Log3( $hash, 3, "$hash->{NAME} (Set) called with $cmd, busy flag is $hash->{helper}->{isBusy}\n name is $name, args " . Dumper(@args) );
+  Log3( $hash, 5, "$hash->{NAME} (Set) called with $cmd, busy flag is $hash->{helper}->{isBusy}\n name is $name, args " . Dumper(@args) );
 
   my ( $argsError, $fadeTime, $fadeSpeed, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels, $colorTemp );
   if ( $cmd ne "?" ) {
@@ -752,6 +752,7 @@ sub EspLedController_ParseInfo(@) {
       readingsBulkUpdate( $hash, 'info-firmware',               $res->{git_version} );
       readingsBulkUpdate( $hash, 'info-sming_version',          $res->{sming} );
       readingsBulkUpdate( $hash, 'info-webapp_version',         $res->{webapp_version} );
+      readingsBulkUpdate( $hash, 'info-heap_free',              $res->{heap_free} );
 
       readingsBulkUpdate( $hash, 'info-event_num_clients',      $res->{event_num_clients} );
       readingsBulkUpdate( $hash, 'info-current_rom_slot',       $res->{current_rom} );
@@ -1216,6 +1217,7 @@ sub EspLedController_doCall(@) {
   my $param = shift @{ $hash->{helper}->{cmdQueue} };
 
   $hash->{helper}->{lastCall} = $param;
+  
   HttpUtils_NonblockingGet($param);
 
   return undef;

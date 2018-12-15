@@ -572,7 +572,7 @@ sub EspLedController_Set(@) {
     EspLedController_SetHSVColor( $hash, "+$rot", undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   else {
-    my $cmdList = "hsv rgb:colorpicker,RGB state hue sat white stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update ct rotate";
+    my $cmdList = "hsv rgb:colorpicker,RGB state hue:slider,0,0.1,360 sat:slider,0,1,100 white stop val:slider,0,1,100 pct:slider,0,1,100 dim:slider,0,1,100 dimup:slider,0,1,100 dimdown:slider,0,1,100 on off toggle raw pause continue blink skip config restart fw_update ct rotate";
     return SetExtensions( $hash, $cmdList, $name, $cmd, @args );
   }
 

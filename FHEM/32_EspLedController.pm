@@ -369,6 +369,20 @@ sub EspLedController_Set(@) {
 
     EspLedController_SetHSVColor( $hash, undef, undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
+  elsif ( $cmd eq 'white' ) {
+    my $colorTemp = undef;
+    
+    if ( @args > 0 ) {
+        $colorTemp = $args[0];
+        if( !EspLedController_rangeCheck( $colorTemp, 2000, 10000, 0) ){
+          my $msg = "$hash->{NAME} colorTemp must be a number from 2000-10000";
+          Log3 ($hash, 3, $msg);
+          return $msg;
+        }
+    }
+
+    EspLedController_SetHSVColor( $hash, undef, 0, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
+  }
   elsif ( $cmd eq 'on' ) {
 
     # Add check to only do something if the controller is REALLY turned off, i.e. val eq 0
@@ -558,7 +572,7 @@ sub EspLedController_Set(@) {
     EspLedController_SetHSVColor( $hash, "+$rot", undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
   else {
-    my $cmdList = "hsv rgb:colorpicker,RGB state hue sat stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update ct rotate";
+    my $cmdList = "hsv rgb:colorpicker,RGB state hue sat white stop val dim dimup dimdown on off toggle raw pause continue blink skip config restart fw_update ct rotate";
     return SetExtensions( $hash, $cmdList, $name, $cmd, @args );
   }
 

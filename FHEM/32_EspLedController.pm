@@ -65,6 +65,9 @@ sub EspLedController_Define($$) {
   $hash->{helper}->{lastCall} = undef;
   $hash->{DeviceName} = "$hash->{IP}:$hash->{PORT}";
 
+  $attr{$name}{webCmd} = 'rgb' if (!defined($attr{$name}{webCmd}));
+  $attr{$name}{icon} = 'light_led_stripe_rgb' if (!defined($attr{$name}{icon}));
+  
   return DevIo_OpenDev( $hash, 0, "EspLedController_Init", "EspLedController_Connect" );
 }
 

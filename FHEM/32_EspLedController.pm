@@ -285,6 +285,24 @@ sub EspLedController_Get(@) {
   return undef;
 }
 
+sub EspLedController_ColorRangeCheck(@) {
+  my ( $hash, $colorTemp ) = @_;
+  my $ww = ReadingsVal( $hash->{NAME}, "config-color-colortemp-ww", -1 );
+  my $cw = ReadingsVal( $hash->{NAME}, "config-color-colortemp-cw", -1 );
+  
+  my $result = undef;
+  if ( $cw eq -1 || $ww eq -1 ) {
+    $result = "No color temperature limits found. Controller config incomplete. Please issue a get config";
+  }
+  
+  if( !EspLedController_rangeCheck( $colorTemp, $ww, $cw, 0) ){
+    $result = "Color temperatur $colorTemp is out of range! Supported range is $ww to $cw";
+  }
+  
+  # Log3 ($hash, 3, $result) if $result != undef;
+  return $result;
+}
+
 sub EspLedController_Set(@);
 sub EspLedController_Set(@) {
   my ( $hash, $name, $cmd, @args ) = @_;
@@ -364,11 +382,8 @@ sub EspLedController_Set(@) {
   }
   elsif ( $cmd eq 'ct' ) {
     my $colorTemp = $args[0];
-    if( !EspLedController_rangeCheck( $colorTemp, 2000, 10000, 0) ){
-      my $msg = "$hash->{NAME} colorTemp must be a number from 2000-10000";
-      Log3 ($hash, 3, $msg);
-      return $msg;
-    }
+    my $res = EspLedController_ColorRangeCheck( $hash, $colorTemp );
+    return $res if ($res);
 
     EspLedController_SetHSVColor( $hash, undef, undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
@@ -377,11 +392,8 @@ sub EspLedController_Set(@) {
     
     if ( @args > 0 ) {
         $colorTemp = $args[0];
-        if( !EspLedController_rangeCheck( $colorTemp, 2000, 10000, 0) ){
-          my $msg = "$hash->{NAME} colorTemp must be a number from 2000-10000";
-          Log3 ($hash, 3, $msg);
-          return $msg;
-        }
+        my $res = EspLedController_ColorRangeCheck( $hash, $colorTemp );
+        return $res if ($res);
     }
 
     EspLedController_SetHSVColor( $hash, undef, 0, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );

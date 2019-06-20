@@ -35,7 +35,7 @@ sub EspLedController_Initialize(@) {
   $hash->{AttrFn}     = 'EspLedController_Attr';
   $hash->{NotifyFn}   = 'EspLedController_Notify';
   $hash->{ReadFn}     = 'EspLedController_Read';
-  $hash->{AttrList}   = "defaultRamp slaves" . " $readingFnAttributes";
+  $hash->{AttrList}   = "defaultRamp slaves deviceName apiPassword" . " $readingFnAttributes";
   require "HttpUtils.pm";
   
   return undef;
@@ -81,7 +81,9 @@ sub EspLedController_Undef($$) {
 sub EspLedController_Init(@) {
   my ($hash) = @_;
   $hash->{LAST_RECV} = time();
-  EspLedController_Set( $hash, $hash->{NAME}, "config", "config-general-device_name", $hash->{NAME} );
+  
+  my $deviceName = AttrVal( $hash->{NAME}, "deviceName", $hash->{NAME} );
+  EspLedController_Set( $hash, $hash->{NAME}, "config", "config-general-device_name", $deviceName );
   EspLedController_GetConfig($hash);
   EspLedController_GetInfo($hash);
   EspLedController_GetCurrentColor($hash);
@@ -529,35 +531,13 @@ sub EspLedController_Set(@) {
     $forwardToSlaves = 1;
   }
   elsif ( $cmd eq 'config' ) {
-    return "Invalid syntax: Use 'set <device> <parameter> <value>'" if ( @args != 2 );
+    return "Invalid syntax: Use 'set <device> config <parameter> <value>'" if ( @args != 2 );
 
-    my $param = EspLedController_GetHttpParams( $hash, "POST", "config", "" );
-    $param->{parser} = \&EspLedController_ParseBoolResult;
-
-    my @keys = split /-/, $args[0];
-    return "Invalid config parameter name!" if ( @keys < 2 );
-
-    my $body    = {};
-    my $curNode = $body;
-
-    for my $i ( 1 .. ($#keys) ) {
-      if ( $i == ($#keys) ) {
-        $curNode->{ $keys[$i] } = $args[1];
-      }
-      else {
-        my $newNode = {};
-        $curNode->{ $keys[$i] } = $newNode;
-        $curNode = $newNode;
-      }
-    }
-
-    eval { $param->{data} = EspLedController_EncodeJson( $hash, $body ) };
-    if ($@) {
-      Log3( $hash, 2, "$hash->{NAME}: error encoding config request $@" );
-      return undef;
+    my %config = ( $args[0] => $args[1] );
+    if ( !EspLedController_SendConfig($hash, \%config) ) {
+      return "Error sending config!";
     }
     
-    EspLedController_addCall( $hash, $param );
     EspLedController_GetConfig($hash);
   }
   elsif ( $cmd eq 'restart' ) {
@@ -586,8 +566,31 @@ sub EspLedController_Set(@) {
     Log3( $hash, 2, "$hash->{NAME}: Command 'rotate' is deprecated! Please use 'hue' or 'hsv' wit relative values (+/-xxx)!" );
     EspLedController_SetHSVColor( $hash, "+$rot", undef, undef, $colorTemp, $fadeTime, $fadeSpeed, $transitionType, $doQueue, $direction, $doRequeue, $fadeName );
   }
+  elsif ( $cmd eq 'security' ) {
+    return "Invalid syntax: Use 'set <device> security <0|1> [<password>]'" if ( @args == 0 );
+    my $enable = $args[0];
+    
+    if ( $enable ) {
+      return "Invalid syntax: Use 'set <device> security 1 <password>'" if ( @args != 2 );
+      
+      my %config = ( 'config-security-api_secured' => 1, 'config-security-api_password' => $args[1] );
+      if ( !EspLedController_SendConfig($hash, \%config) ) {
+        return "Error sending config!";
+      }
+    }
+    else {
+      return "Invalid syntax: Use 'set <device> security 0'" if ( @args != 1 );
+
+      my %config = ( 'config-security-api_secured' => 0 );
+      if ( !EspLedController_SendConfig($hash, \%config) ) {
+        return "Error sending config!";
+      }
+    }
+    
+    EspLedController_GetConfig($hash);
+  }
   else {
-    my $cmdList = "hsv:colorpicker,HSV,hue,0,1,360,sat,0,1,100,val,0,1,100 rgb:colorpicker,RGB state hue:slider,0,0.1,360 sat:slider,0,1,100 white stop val:slider,0,1,100 pct:slider,0,1,100 dim:slider,0,1,100 dimup:slider,0,1,100 dimdown:slider,0,1,100 on off toggle raw pause continue blink skip config restart fw_update ct:colorpicker,CT,2700,10,6000 rotate";
+    my $cmdList = "hsv:colorpicker,HSV,hue,0,1,360,sat,0,1,100,val,0,1,100 rgb:colorpicker,RGB state hue:slider,0,0.1,360 sat:slider,0,1,100 white stop val:slider,0,1,100 pct:slider,0,1,100 dim:slider,0,1,100 dimup:slider,0,1,100 dimdown:slider,0,1,100 on off toggle raw pause continue blink skip config restart fw_update ct:colorpicker,CT,2700,10,6000 rotate security";
     return SetExtensions( $hash, $cmdList, $name, $cmd, @args );
   }
 
@@ -596,6 +599,48 @@ sub EspLedController_Set(@) {
   }
 
   return undef;
+}
+
+sub EspLedController_SendConfig($$) {
+  my ( $hash, $config ) = @_;
+  my $param = EspLedController_GetHttpParams( $hash, "POST", "config", "" );
+  $param->{parser} = \&EspLedController_ParseBoolResult;
+
+  # prepare request body
+  my $body = {};
+
+  foreach my $key (keys %$config) {
+    my $curNode = $body;
+    
+    my @toks = split /-/, $key;
+    return "Invalid config parameter name!" if ( @toks < 2 );
+
+    for my $i ( 1 .. ($#toks) ) {
+      if ( $i == ($#toks) ) {
+        $curNode->{ $toks[$i] } = $config->{$key};
+      }
+      else {
+        if ( exists $curNode->{ $toks[$i] } ) {
+          $curNode = $curNode->{ $toks[$i] };
+        }
+        else {
+          my $newNode = {};
+          $curNode->{ $toks[$i] } = $newNode;
+          $curNode = $newNode;
+        }
+      }
+    }
+  }
+  
+  eval { $param->{data} = EspLedController_EncodeJson( $hash, $body ) };
+  if ($@) {
+    Log3( $hash, 2, "$hash->{NAME}: error encoding config request $@" );
+    return 0;
+  }
+    
+  EspLedController_addCall( $hash, $param );
+  
+  return 1;
 }
 
 sub EspLedController_SendSystemCommand(@) {
@@ -748,7 +793,7 @@ sub EspLedController_ParseConfig(@) {
     }
   }
   else {
-    Log3( $hash, 2, "$hash->{NAME}: error <empty data received> retriving config" );
+    Log3( $hash, 2, "$hash->{NAME}: error <empty data received> retrieving config" );
   }
   return undef;
 }
@@ -1222,8 +1267,15 @@ sub EspLedController_ParseBoolResult(@) {
 sub EspLedController_addCall(@) {
   my ( $hash, $param ) = @_;
 
-  #  Log3( $hash, 5, "$hash->{NAME}: add to queue: \n\n" . Dumper $param);
+  Log3( $hash, 5, "$hash->{NAME}: add to queue: " . Dumper $param->{data} );
 
+  my $password = AttrVal( $hash->{NAME}, "apiPassword", undef );
+  if (defined($password)) {
+    Log3( $hash, 5, "$hash->{NAME}: Setting basic auth data");
+    $param->{user} = 'admin';
+    $param->{pwd} = $password;
+  }
+  
   # add to queue
   push @{ $hash->{helper}->{cmdQueue} }, $param;
 

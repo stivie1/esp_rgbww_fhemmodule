@@ -12,8 +12,6 @@ use warnings;
 
 use DevIo;
 use Time::HiRes;
-use Time::HiRes qw(usleep nanosleep);
-use Time::HiRes qw(time);
 use JSON;
 use JSON::XS;
 use Data::Dumper;

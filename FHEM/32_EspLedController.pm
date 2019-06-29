@@ -431,6 +431,14 @@ sub EspLedController_Set(@) {
       return EspLedController_Set( $hash, $name, "on", @args );
     }
   }
+  elsif ( $cmd eq 'toggle_fw' ) {
+    # still experimental toggle using new toggle function in firmware. This might replace the regular toggle at some point
+    my $param = EspLedController_GetHttpParams( $hash, "POST", "toggle", "" );
+    $param->{parser} = \&EspLedController_ParseBoolResult;
+
+    EspLedController_addCall( $hash, $param );
+    $forwardToSlaves = 1;
+  }
   elsif ( $cmd eq "dimup" || $cmd eq "up" ) {
 
     # dimming value is first parameter, add to $val and keep hue and sat the way they were.
@@ -588,7 +596,7 @@ sub EspLedController_Set(@) {
     EspLedController_GetConfig($hash);
   }
   else {
-    my $cmdList = "hsv:colorpicker,HSV,hue,0,1,360,sat,0,1,100,val,0,1,100 rgb:colorpicker,RGB state hue:slider,0,0.1,360 sat:slider,0,1,100 white stop val:slider,0,1,100 pct:slider,0,1,100 dim:slider,0,1,100 dimup:slider,0,1,100 dimdown:slider,0,1,100 on off toggle raw pause continue blink skip config restart fw_update ct:colorpicker,CT,2700,10,6000 rotate security";
+    my $cmdList = "hsv:colorpicker,HSV,hue,0,1,360,sat,0,1,100,val,0,1,100 rgb:colorpicker,RGB state hue:slider,0,0.1,360 sat:slider,0,1,100 white stop val:slider,0,1,100 pct:slider,0,1,100 dim:slider,0,1,100 dimup:slider,0,1,100 dimdown:slider,0,1,100 on off toggle toggle_fw raw pause continue blink skip config restart fw_update ct:colorpicker,CT,2700,10,6000 rotate security";
     return SetExtensions( $hash, $cmdList, $name, $cmd, @args );
   }
 

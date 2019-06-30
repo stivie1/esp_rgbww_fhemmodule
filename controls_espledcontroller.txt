@@ -1,2 +1,2 @@
 DEL ./FHEM/32_EspLedController.pm
-UPD 2019-06-29_22:00:00 59279  FHEM/32_EspLedController.pm
+UPD 2019-06-29_22:00:00 57556  FHEM/32_EspLedController.pm

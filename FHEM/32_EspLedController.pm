@@ -33,14 +33,18 @@ sub EspLedController_Initialize(@) {
   $hash->{AttrFn}     = 'EspLedController_Attr';
   $hash->{NotifyFn}   = 'EspLedController_Notify';
   $hash->{ReadFn}     = 'EspLedController_Read';
-  $hash->{AttrList}   = "defaultRamp slaves deviceName apiPassword" . " $readingFnAttributes";
+  $hash->{AttrList}   = "defaultRamp deviceName apiPassword disable:0,1" . " $readingFnAttributes";
   require "HttpUtils.pm";
   
   return undef;
 }
 
-sub EspLedController_Define($$) {
+sub EspLedController_Connect($$) {
+  my ( $hash, $reopen ) = @_;
+  return DevIo_OpenDev( $hash, $reopen, "EspLedController_OnInit", "EspLedController_OnConnect" );
+}
 
+sub EspLedController_Define($$) {
   my ( $hash, $def ) = @_;
   my @a = split( "[ \t][ \t]*", $def );
 
@@ -57,8 +61,6 @@ sub EspLedController_Define($$) {
 
   # TODO remove, fixeg loglevel 5 only for debugging
   #$attr{$hash->{NAME}}{verbose} = 5;
-  EspLedController_GetInfo($hash);
-  EspLedController_GetConfig($hash);
   $hash->{helper}->{oldVal} = 100;
   $hash->{helper}->{lastCall} = undef;
   $hash->{DeviceName} = "$hash->{IP}:$hash->{PORT}";
@@ -66,7 +68,12 @@ sub EspLedController_Define($$) {
   $attr{$name}{webCmd} = 'rgb' if (!defined($attr{$name}{webCmd}));
   $attr{$name}{icon} = 'light_led_stripe_rgb' if (!defined($attr{$name}{icon}));
   
-  return DevIo_OpenDev( $hash, 0, "EspLedController_Init", "EspLedController_Connect" );
+  return undef if IsDisabled($hash);
+  
+  EspLedController_GetInfo($hash);
+  EspLedController_GetConfig($hash);
+
+  return EspLedController_Connect( $hash, 0 );
 }
 
 sub EspLedController_Undef($$) {
@@ -76,7 +83,7 @@ sub EspLedController_Undef($$) {
   return undef;
 }
 
-sub EspLedController_Init(@) {
+sub EspLedController_OnInit(@) {
   my ($hash) = @_;
   $hash->{LAST_RECV} = time();
   
@@ -89,7 +96,7 @@ sub EspLedController_Init(@) {
   return undef;
 }
 
-sub EspLedController_Connect($$) {
+sub EspLedController_OnConnect($$) {
   my ( $hash, $err ) = @_;
 
   if ($err) {
@@ -152,7 +159,7 @@ sub EspLedController_Ready($) {
 
   return undef if IsDisabled( $hash->{NAME} );
 
-  return DevIo_OpenDev( $hash, 1, "EspLedController_Init", "EspLedController_Connect" ) if ( $hash->{STATE} eq "disconnected" );
+  return EspLedController_Connect( $hash, 1 ) if ( $hash->{STATE} eq "disconnected" );
   return undef;
 }
 
@@ -267,6 +274,9 @@ sub EspLedController_ParseMsg($$) {
 
 sub EspLedController_Get(@) {
   my ( $hash, $name, $cmd, @args ) = @_;
+
+  return undef if IsDisabled($hash);
+
   my $cnt = @args;
 
   if ( $cmd eq 'config' ) {
@@ -306,8 +316,9 @@ sub EspLedController_ColorRangeCheck(@) {
 sub EspLedController_Set(@);
 sub EspLedController_Set(@) {
   my ( $hash, $name, $cmd, @args ) = @_;
-  my $forwardToSlaves = 0;
-
+  
+  return undef if IsDisabled($hash);
+  
   Log3( $hash, 5, "$hash->{NAME} (Set) called with $cmd, busy flag is $hash->{helper}->{isBusy}\n name is $name, args " . Dumper(@args) );
 
   my ( $argsError, $fadeTime, $fadeSpeed, $doQueue, $direction, $doRequeue, $fadeName, $transitionType, $channels, $colorTemp );
@@ -437,7 +448,6 @@ sub EspLedController_Set(@) {
     $param->{parser} = \&EspLedController_ParseBoolResult;
 
     EspLedController_addCall( $hash, $param );
-    $forwardToSlaves = 1;
   }
   elsif ( $cmd eq "dimup" || $cmd eq "up" ) {
 
@@ -512,7 +522,6 @@ sub EspLedController_Set(@) {
   }
   elsif ( $cmd eq 'continue' || $cmd eq 'pause' || $cmd eq 'skip' || $cmd eq 'stop' ) {
     EspLedController_SetChannelCommand( $hash, $cmd, $channels );
-    $forwardToSlaves = 1;
   }
   elsif ( $cmd eq 'blink' ) {
     my $param = EspLedController_GetHttpParams( $hash, "POST", "blink", "" );
@@ -534,7 +543,6 @@ sub EspLedController_Set(@) {
       return undef;
     }
     EspLedController_addCall( $hash, $param );
-    $forwardToSlaves = 1;
   }
   elsif ( $cmd eq 'config' ) {
     return "Invalid syntax: Use 'set <device> config <parameter> <value>'" if ( @args != 2 );
@@ -600,10 +608,6 @@ sub EspLedController_Set(@) {
     return SetExtensions( $hash, $cmdList, $name, $cmd, @args );
   }
 
-  if ($forwardToSlaves) {
-    EspLedController_ForwardToSlaves( $hash, $cmd, \@args );
-  }
-
   return undef;
 }
 
@@ -663,22 +667,6 @@ sub EspLedController_SendSystemCommand(@) {
   EspLedController_addCall( $hash, $param );
 }
 
-sub EspLedController_ForwardToSlaves(@) {
-  my ( $hash, $cmd, $args ) = @_;
-
-  my $slaveAttr = AttrVal( $hash->{NAME}, "slaves", "" );
-  return if ( $slaveAttr eq "" );
-
-  my @slaves = split / /, $slaveAttr;
-  for my $slaveDev (@slaves) {
-    my ( $slaveName, $offsets ) = split /:/, $slaveDev;
-
-    my $slaveCmd = "set $slaveName $cmd " . join( " ", @{$args} );
-    Log3( $hash, 3, "$hash->{NAME} EspLedController_ForwardToSlaves: $slaveCmd" );
-    fhem($slaveCmd);
-  }
-}
-
 sub EspLedController_Cleanup(@) {
   my ($hash) = @_;
   EspLedController_RemoveTimerCheck($hash);
@@ -716,25 +704,21 @@ sub EspLedController_Attr(@) {
 
   my ( $cmd, $device, $attribName, $attribVal ) = @_;
   my $hash = $defs{$device};
-
-  if ( $cmd eq 'set' ) {
-    if ( $attribName eq 'slaves' ) {
-      my @slaves = split / /, $attribVal;
-      for my $slaveDev (@slaves) {
-        my ( $slaveName, $offsets ) = split /:/, $slaveDev;
-        if ( $slaveName eq $hash->{NAME} ) {
-          return "You cannot set the current devices as a slave (infinite loop)!";
-        }
-        next if not defined $offsets;
-        my @offSplit = split /,/, $offsets;
-        if ( @offSplit != 3 ) {
-          return 'Invalid Syntax for attribute slaves. Use: slave:off_h,off_s,off_v';
-        }
+  
+  if ( $attribName eq "disable" ) {
+    if($cmd eq "set" && ($attribVal || !defined($attribVal))) {
+      DevIo_CloseDev($hash);
+      $hash->{STATE} = "Disabled";
+    } else {
+      if (EspLedController_IsDisabled($hash)) {
+        $hash->{STATE} = "Initialized";
+           
+        EspLedController_Connect( $hash, 0 );
       }
     }
   }
 
-  Log3( $hash, 4, "$hash->{NAME} attrib $attribName $cmd $attribVal" );
+  Log3( $hash, 4, "$hash->{NAME} attrib $attribName $cmd" );
   return undef;
 }
 
@@ -773,8 +757,6 @@ sub EspLedController_IterateConfigHash($$$) {
 sub EspLedController_ParseConfig(@) {
   my ( $hash, $err, $data ) = @_;
 
-  my $res;
-
   Log3( $hash, 4, "$hash->{NAME}: got config response" );
 
   if ($err) {
@@ -782,11 +764,12 @@ sub EspLedController_ParseConfig(@) {
   }
   elsif ($data) {
     Log3( $hash, 4, "$hash->{NAME}: config response data $data" );
+    my $jsonDecode;
     eval {
 
       # TODO: Can't we just store the instance of the JSON parser somewhere?
       # Would that improve performance???
-      eval { $res = JSON->new->utf8(1)->decode($data); };
+      eval { $jsonDecode = JSON->new->utf8(1)->decode($data); };
     };
     if ($@) {
       Log3( $hash, 2, "$hash->{NAME}: error decoding config response $@" );
@@ -794,7 +777,7 @@ sub EspLedController_ParseConfig(@) {
     else {
       fhem( "deletereading " . $hash->{NAME} . " config-.*", 1 );
       readingsBeginUpdate($hash);
-      EspLedController_IterateConfigHash( $hash, "config", $res );
+      EspLedController_IterateConfigHash( $hash, "config", $jsonDecode );
       readingsEndUpdate( $hash, 1 );
     }
   }
@@ -1297,6 +1280,8 @@ sub EspLedController_addCall(@) {
 sub EspLedController_doCall(@) {
   my ($hash) = @_;
 
+  return undef if IsDisabled($hash);
+
   return unless scalar @{ $hash->{helper}->{cmdQueue} };
 
   # set busy and do it
@@ -1313,6 +1298,8 @@ sub EspLedController_doCall(@) {
 sub EspLedController_callback(@) {
   my ( $param, $err, $data ) = @_;
   my ($hash) = $param->{hash};
+  
+  return undef if IsDisabled($hash);
 
   if (!$err && $param->{code} != 200 && $param->{httpheader} =~ m/Retry-After: (\d)/) {
     # TODO: Retry-After with timestamp not supported

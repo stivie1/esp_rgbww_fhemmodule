@@ -841,6 +841,7 @@ sub EspLedController_FwUpdate_GetVersion(@) {
   my ( $hash, $url, $force ) = @_;
 
   $hash->{helper}->{fwUpdateForce} = $force;
+  $hash->{helper}->{fw_update_starttime} = time(); # store when fw_update is started (-> now)
 
   my $params = {
     url      => $url,
@@ -858,6 +859,15 @@ sub EspLedController_FwUpdate_GetVersion(@) {
 sub EspLedController_QueueFwUpdateProgressCheck(@) {
   my ($hash) = @_;
 
+  # give up polling for fw update progress after 5 minutes
+  my $maxFwUpdateDuration = 300;
+  if (time() - $hash->{helper}->{fw_update_starttime} > $maxFwUpdateDuration) {
+    my $msg = "Update cancelled. Did not finish within $maxFwUpdateDuration seconds";
+    Log3( $hash, 3, "$hash->{NAME}: Firmware update failed: $msg" );
+    readingsSingleUpdate( $hash, "lastFwUpdate", "Error: $msg", 1 );
+    return undef;
+  }  
+  
   InternalTimer( time() + 1, "EspLedController_FwUpdateProgressCheck", $hash, 0 );
 }
 
@@ -913,6 +923,7 @@ sub EspLedController_ParseFwVersionResult(@) {
     $param->{data} = $data;
     EspLedController_addCall( $hash, $param );
 
+    # queue next query or give up after fw_update is running for more than 300 seconds without result
     EspLedController_QueueFwUpdateProgressCheck($hash);
   }
 
@@ -925,8 +936,8 @@ sub EspLedController_ParseFwUpdateProgress(@) {
   my $res;
   if ($err) {
     Log3( $hash, 2, "$hash->{NAME}: EspLedController_ParseFwUpdateProgress error: $err" );
-    EspLedController_QueueFwUpdateProgressCheck($hash);
     readingsSingleUpdate( $hash, "lastFwUpdate", "ParseFwUpdateProgress error: $err", 1 );
+    EspLedController_QueueFwUpdateProgressCheck($hash);
   }
   elsif ($data) {
     eval { $res = JSON->new->utf8(1)->decode($data); };

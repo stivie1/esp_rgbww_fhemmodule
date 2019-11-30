@@ -710,7 +710,7 @@ sub EspLedController_Attr(@) {
       DevIo_CloseDev($hash);
       $hash->{STATE} = "Disabled";
     } else {
-      if (EspLedController_IsDisabled($hash)) {
+      if (IsDisabled($hash)) {
         $hash->{STATE} = "Initialized";
            
         EspLedController_Connect( $hash, 0 );

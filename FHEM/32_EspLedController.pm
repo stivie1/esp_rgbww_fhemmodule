@@ -1198,6 +1198,7 @@ sub EspLedController_UpdateReadingsRaw(@) {
   readingsBulkUpdate( $hash, 'raw_blue',  $b );
   readingsBulkUpdate( $hash, 'raw_cw',    $cw );
   readingsBulkUpdate( $hash, 'raw_ww',    $ww );
+  readingsBulkUpdate( $hash, 'stateLight', $r + $g + $b > 0 ? 'on' : 'off' );
   readingsEndUpdate( $hash, 1 );
   return undef;
 }

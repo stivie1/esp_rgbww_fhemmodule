@@ -1166,7 +1166,6 @@ sub EspLedController_UpdateReadingsHsv(@) {
   my $s = defined $sat ? $sat : "-";
   my $v = defined $val ? $val : "-";
   my $ct = defined $colorTemp ? $colorTemp : "-";
-  my $stateLight = ( $v > 0 ) ? 'on' : 'off';
   
   my $xrgb = "-";
   if (defined $hue && defined $sat && defined $val) {
@@ -1183,7 +1182,6 @@ sub EspLedController_UpdateReadingsHsv(@) {
   readingsBulkUpdate( $hash, 'pct', $v );
   readingsBulkUpdate( $hash, 'ct',  $ct );
   readingsBulkUpdate( $hash, 'hsv', $hsv );
-  readingsBulkUpdate( $hash, 'stateLight', $stateLight );
   readingsBulkUpdate( $hash, 'rgb', $xrgb );  
   readingsEndUpdate( $hash, 1 );
   return undef;
@@ -1198,7 +1196,7 @@ sub EspLedController_UpdateReadingsRaw(@) {
   readingsBulkUpdate( $hash, 'raw_blue',  $b );
   readingsBulkUpdate( $hash, 'raw_cw',    $cw );
   readingsBulkUpdate( $hash, 'raw_ww',    $ww );
-  readingsBulkUpdate( $hash, 'stateLight', $r + $g + $b > 0 ? 'on' : 'off' );
+  readingsBulkUpdate( $hash, 'stateLight', $r + $g + $b + $cw + $ww > 0 ? 'on' : 'off' );
   readingsEndUpdate( $hash, 1 );
   return undef;
 }

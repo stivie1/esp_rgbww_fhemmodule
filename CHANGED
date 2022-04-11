@@ -1,5 +1,7 @@
 LedController last change:
 2017-01-30
  - Merge pull request #21 from ShuzzDE/develop
-
+2022-03-29
+ - Removed JSON::XS
+ - Replaced JSON encode/decode commands
 Asynchronous update of readings

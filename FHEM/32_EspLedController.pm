@@ -6,6 +6,12 @@
 # 4: 1st technical level (detailed internal reporting)
 # 5: 2nd technical level (full internal reporting)
 
+# 2022.03.29 changed JSON encode and decode functions, removed JSON::XS
+#
+#
+#
+
+
 package main;
 use strict;
 use warnings;
@@ -13,7 +19,7 @@ use warnings;
 use DevIo;
 use Time::HiRes;
 use JSON;
-use JSON::XS;
+#use JSON::XS;
 use Data::Dumper;
 use SetExtensions;
 
@@ -196,7 +202,8 @@ sub EspLedController_Read($) {
     
     Log3( $name, 5, "$hash->{NAME}: EspLedController_ProcessRead: Decoding JSON message. Length: " . length($msg) . " Content: " . $msg );
     my $obj;
-    eval { $obj = JSON->new->utf8(0)->decode($msg); };
+    #eval { $obj = JSON->new->utf8(0)->decode($msg); };
+	eval { $obj = decode_json($msg) };
     if ($@) {
       Log3( $hash, 2, "$hash->{NAME}: EspLedController_Read: Error parsing msg: $msg" );
       next;
@@ -765,12 +772,11 @@ sub EspLedController_ParseConfig(@) {
   elsif ($data) {
     Log3( $hash, 4, "$hash->{NAME}: config response data $data" );
     my $jsonDecode;
-    eval {
 
       # TODO: Can't we just store the instance of the JSON parser somewhere?
       # Would that improve performance???
-      eval { $jsonDecode = JSON->new->utf8(1)->decode($data); };
-    };
+      #eval { $jsonDecode = JSON->new->utf8(1)->decode($data); };
+    eval { $jsonDecode = decode_json($data) };
     if ($@) {
       Log3( $hash, 2, "$hash->{NAME}: error decoding config response $@" );
     }
@@ -799,12 +805,12 @@ sub EspLedController_ParseInfo(@) {
   }
   elsif ($data) {
     Log3( $hash, 3, "$hash->{NAME}: info response data $data" );
-    eval {
 
       # TODO: Can't we just store the instance of the JSON parser somewhere?
       # Would that improve performance???
-      eval { $res = JSON->new->utf8(1)->decode($data); };
-    };
+      #eval { $res = JSON->new->utf8(1)->decode($data); };
+	  eval { $res =  decode_json($data) };
+
     if ($@) {
       Log3( $hash, 2, "$hash->{NAME}: error decoding info response $@" );
     }
@@ -892,7 +898,8 @@ sub EspLedController_ParseFwVersionResult(@) {
     Log3( $hash, 2, "$hash->{NAME}: EspLedController_FwVersionCallback error: $err" );
   }
   elsif ($data) {
-    eval { $res = JSON->new->utf8(1)->decode($data); };
+    #eval { $res = JSON->new->utf8(1)->decode($data); };
+	eval { $res = decode_json($data) };
     if ($@) {
       readingsSingleUpdate( $hash, "lastFwUpdate", "error decoding FW version", 1 );
       Log3( $hash, 2, "$hash->{NAME}: EspLedController_ParseFwVersionResult error decoding FW version: $@" );
@@ -940,7 +947,8 @@ sub EspLedController_ParseFwUpdateProgress(@) {
     EspLedController_QueueFwUpdateProgressCheck($hash);
   }
   elsif ($data) {
-    eval { $res = JSON->new->utf8(1)->decode($data); };
+    #eval { $res = JSON->new->utf8(1)->decode($data); };
+	eval { $res = decode_json($data) };
     if ($@) {
       my $msg = "error decoding FW update status $@";
       readingsSingleUpdate( $hash, "lastFwUpdate", $msg, 1 );
@@ -1017,8 +1025,9 @@ sub EspLedController_ParseColor(@) {
     Log3( $hash, 2, "$hash->{NAME}: error $err retrieving color" );
   }
   elsif ($data) {
-    eval { $res = JSON->new->utf8(1)->decode($data); };
-    if ($@) {
+    #eval { $res = JSON->new->utf8(1)->decode($data); };
+    eval { $res = decode_json($data) };
+	if ($@) {
       Log3( $hash, 4, "$hash->{NAME}: error decoding color response $@" );
     }
     else {
@@ -1091,7 +1100,8 @@ sub EspLedController_SetHSVColor_Slaves(@) {
 sub EspLedController_EncodeJson($$) {
   my ( $hash, $obj ) = @_;
   my $data;
-  eval { $data = JSON->new->utf8(1)->encode($obj); };
+  #eval { $data = JSON->new->utf8(1)->encode($obj); };
+  eval { $data = encode_json($obj) };
   if ($@) {
     Log3( $hash, 2, "$hash->{NAME}: error encoding HSV color request $@" );
     return undef;
@@ -1129,7 +1139,8 @@ sub EspLedController_SetHSVColor(@) {
   $cmd->{name}      = $name           if defined($name);
 
   my $data;
-  eval { $data = JSON->new->utf8(1)->encode($cmd); };
+  #eval { $data = JSON->new->utf8(1)->encode($cmd); };
+  eval { $data = encode_json($cmd)};
   if ($@) {
     Log3( $hash, 2, "$hash->{NAME}: error encoding HSV color request $@" );
   }
@@ -1242,7 +1253,8 @@ sub EspLedController_ParseBoolResult(@) {
     Log3( $hash, 2, "$hash->{NAME}: EspLedController_ParseBoolResult error: $err" );
   }
   elsif ($data) {
-    eval { $res = JSON->new->utf8(1)->decode($data); };
+    #eval { $res = JSON->new->utf8(1)->decode($data); };
+	eval { $res = decode_json($data) };
     if ( exists $res->{error} ) {
       Log3( $hash, 3, "$hash->{NAME}: error EspLedController_ParseBoolResult: $data" );
     }

@@ -19,7 +19,6 @@ use warnings;
 use DevIo;
 use Time::HiRes;
 use JSON;
-#use JSON::XS;
 use Data::Dumper;
 use SetExtensions;
 
